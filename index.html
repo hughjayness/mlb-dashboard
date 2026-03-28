@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MLB Betting Dashboard</title>
+  <style>
+    :root{
+      --bg:#08101f;--panel:#121b33;--panel2:#182448;--text:#eef3ff;--muted:#a3b3d9;
+      --accent:#59a7ff;--good:#2ecc71;--warn:#ffb020;--bad:#ef5350;--border:#2b3b72;
+      --shadow:0 10px 28px rgba(0,0,0,.22);
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Arial,Helvetica,sans-serif;background:linear-gradient(180deg,var(--bg),#0c1530);color:var(--text)}
+    .wrap{max-width:1500px;margin:0 auto;padding:18px}
+    h1{margin:0 0 6px;font-size:30px}
+    .sub{color:var(--muted);margin-bottom:18px;line-height:1.45}
+    .status{margin-bottom:16px;padding:10px 12px;border:1px solid var(--border);border-radius:12px;background:var(--panel)}
+    .cards{display:grid;grid-template-columns:repeat(5,minmax(150px,1fr));gap:14px;margin-bottom:16px}
+    .card,.panel{background:var(--panel);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow)}
+    .card{padding:16px}
+    .label{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.08em}
+    .value{font-size:28px;font-weight:700;margin-top:8px}
+    .small{font-size:13px;color:var(--muted);margin-top:6px}
+    .layout{display:grid;grid-template-columns:2fr 1fr;gap:16px}
+    .panel-header{padding:14px 16px;border-bottom:1px solid var(--border);font-weight:700}
+    .table-wrap{overflow-x:auto}
+    table{width:100%;border-collapse:collapse;min-width:1100px}
+    th,td{padding:12px 10px;border-bottom:1px solid rgba(255,255,255,.06);text-align:left;font-size:14px;vertical-align:top}
+    th{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.05em;background:rgba(255,255,255,.02)}
+    tbody tr:hover{background:rgba(89,167,255,.08);cursor:pointer}
+    .detail{padding:16px}
+    .detail h2{margin:0 0 6px;font-size:24px}
+    .detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0}
+    .detail-box{background:var(--panel2);border:1px solid var(--border);border-radius:12px;padding:12px}
+    .detail-box .k{color:var(--muted);font-size:12px;text-transform:uppercase;margin-bottom:5px}
+    .detail-box .v{font-size:18px;font-weight:700;line-height:1.3}
+    .notes{background:var(--panel2);border:1px solid var(--border);border-radius:12px;padding:12px;color:var(--muted);line-height:1.5}
+    .reason-list{margin:0;padding-left:18px}
+    .reason-list li{margin:6px 0}
+    .empty-row{color:var(--muted);text-align:center;padding:24px 12px}
+    .pill{display:inline-block;padding:5px 10px;border-radius:999px;font-size:12px;font-weight:700}
+    .pill-good{background:rgba(46,204,113,.14);color:var(--good)}
+    .pill-warn{background:rgba(255,176,32,.14);color:var(--warn)}
+    .pill-bad{background:rgba(239,83,80,.14);color:var(--bad)}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+    @media (max-width:1100px){.cards{grid-template-columns:repeat(2,1fr)}.layout{grid-template-columns:1fr}}
+    @media (max-width:700px){.cards,.detail-grid{grid-template-columns:1fr}.wrap{padding:12px}h1{font-size:24px}.value{font-size:24px}}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>MLB Betting Dashboard</h1>
+  <div class="sub">No sample data. No fallback games. If live data is unavailable, the board stays empty and shows an error.</div>
+
+  <div class="status" id="statusBox">Loading live data...</div>
+
+  <div class="cards">
+    <div class="card"><div class="label">Games</div><div class="value" id="gamesCount">0</div><div class="small">Live games returned</div></div>
+    <div class="card"><div class="label">Best Total</div><div class="value" id="bestTotal">—</div><div class="small">From live model only</div></div>
+    <div class="card"><div class="label">Best Side</div><div class="value" id="bestSide">—</div><div class="small">From live model only</div></div>
+    <div class="card"><div class="label">Top Prop</div><div class="value" id="bestProp">—</div><div class="small">From live model only</div></div>
+    <div class="card"><div class="label">Last Updated</div><div class="value" id="lastUpdated">—</div><div class="small">Live endpoint only</div></div>
+  </div>
+
+  <div class="layout">
+    <div class="panel">
+      <div class="panel-header">Today's Board</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Matchup</th>
+              <th>Moneyline</th>
+              <th>Total</th>
+              <th>Best Bet</th>
+              <th>Why</th>
+            </tr>
+          </thead>
+          <tbody id="gamesTable"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header">Game Detail</div>
+      <div class="detail" id="detailPanel">
+        <h2>No live game selected</h2>
+        <div class="notes">
+          When live data is working, click a row to see the full reasoning for that game.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+var currentGames = [];
+
+function setStatus(text) {
+  document.getElementById("statusBox").textContent = text;
+}
+
+function formatTimeStamp(value) {
+  if (!value) return "—";
+  var d = new Date(value);
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleString();
+}
+
+function confidenceClass(conf) {
+  if (conf === "High") return "pill pill-good";
+  if (conf === "Medium") return "pill pill-warn";
+  return "pill pill-bad";
+}
+
+function renderCards(games, lastUpdated) {
+  document.getElementById("gamesCount").textContent = games.length;
+  document.getElementById("lastUpdated").textContent = formatTimeStamp(lastUpdated);
+
+  if (!games.length) {
+    document.getElementById("bestTotal").textContent = "—";
+    document.getElementById("bestSide").textContent = "—";
+    document.getElementById("bestProp").textContent = "—";
+    return;
+  }
+
+  var bestTotal = "—";
+  var bestSide = "—";
+  var bestProp = "—";
+
+  for (var i = 0; i < games.length; i++) {
+    var g = games[i];
+    if (bestTotal === "—" && g.bestBetType === "Total") bestTotal = g.bestBet || "—";
+    if (bestSide === "—" && g.bestBetType === "Side") bestSide = g.bestBet || "—";
+    if (bestProp === "—" && g.bestBetType === "Prop") bestProp = g.bestBet || "—";
+  }
+
+  document.getElementById("bestTotal").textContent = bestTotal;
+  document.getElementById("bestSide").textContent = bestSide;
+  document.getElementById("bestProp").textContent = bestProp;
+}
+
+function renderDetail(game) {
+  if (!game) {
+    document.getElementById("detailPanel").innerHTML =
+      '<h2>No live game selected</h2>' +
+      '<div class="notes">When live data is working, click a row to see the full reasoning for that game.</div>';
+    return;
+  }
+
+  var reasonsHtml = "";
+  if (game.reasons && game.reasons.length) {
+    reasonsHtml = '<ul class="reason-list">' + game.reasons.map(function(r){
+      return '<li>' + r + '</li>';
+    }).join('') + '</ul>';
+  } else {
+    reasonsHtml = '<div class="notes">No reasoning returned yet from the backend.</div>';
+  }
+
+  document.getElementById("detailPanel").innerHTML =
+    '<h2>' + (game.away || "Away") + ' @ ' + (game.home || "Home") + '</h2>' +
+    '<div class="detail-grid">' +
+      '<div class="detail-box"><div class="k">Time</div><div class="v">' + (game.time || "—") + '</div></div>' +
+      '<div class="detail-box"><div class="k">Best Bet</div><div class="v">' + (game.bestBet || "—") + '</div></div>' +
+      '<div class="detail-box"><div class="k">Bet Type</div><div class="v">' + (game.bestBetType || "—") + '</div></div>' +
+      '<div class="detail-box"><div class="k">Confidence</div><div class="v"><span class="' + confidenceClass(game.confidence || "Low") + '">' + (game.confidence || "Low") + '</span></div></div>' +
+      '<div class="detail-box"><div class="k">Moneyline</div><div class="v">' + (game.moneyline || "N/A") + '</div></div>' +
+      '<div class="detail-box"><div class="k">Total</div><div class="v">' + (game.total || "N/A") + '</div></div>' +
+    '</div>' +
+    '<div class="notes"><strong>Why this bet:</strong>' + reasonsHtml + '</div>';
+}
+
+function renderTable(games) {
+  var tbody = document.getElementById("gamesTable");
+  tbody.innerHTML = "";
+
+  if (!games.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty-row">No live data available. No recommendations shown.</td></tr>';
+    renderDetail(null);
+    return;
+  }
+
+  for (var i = 0; i < games.length; i++) {
+    var game = games[i];
+    var whyShort = "No reasoning returned";
+    if (game.reasons && game.reasons.length) {
+      whyShort = game.reasons.slice(0, 2).join(" • ");
+    }
+
+    var tr = document.createElement("tr");
+    tr.innerHTML =
+      "<td>" + (game.time || "—") + "</td>" +
+      "<td>" + (game.away || "Away") + " @ " + (game.home || "Home") + "</td>" +
+      "<td>" + (game.moneyline || "N/A") + "</td>" +
+      "<td>" + (game.total || "N/A") + "</td>" +
+      "<td>" + (game.bestBet || "—") + "</td>" +
+      "<td>" + whyShort + "</td>";
+
+    (function(g){
+      tr.addEventListener("click", function(){ renderDetail(g); });
+    })(game);
+
+    tbody.appendChild(tr);
+  }
+
+  renderDetail(games[0]);
+}
+
+function normalizeLiveData(data) {
+  if (!data || !data.games || !data.games.length) {
+    return [];
+  }
+
+  return data.games.map(function(game) {
+    return {
+      id: game.id || "",
+      time: game.time || "—",
+      away: game.away || "Away",
+      home: game.home || "Home",
+      moneyline: game.moneyline || "N/A",
+      total: game.total || "N/A",
+      bestBet: game.bestBet || "—",
+      bestBetType: game.bestBetType || "—",
+      confidence: game.confidence || "Low",
+      reasons: Array.isArray(game.reasons) ? game.reasons : []
+    };
+  });
+}
+
+function loadDashboard() {
+  fetch("/api/dashboard")
+    .then(function(response){
+      if (!response.ok) {
+        throw new Error("API returned " + response.status);
+      }
+      return response.json();
+    })
+    .then(function(data){
+      currentGames = normalizeLiveData(data);
+      if (!currentGames.length) {
+        setStatus("Live data responded, but no usable games were returned.");
+      } else {
+        setStatus("Live data loaded successfully.");
+      }
+      renderCards(currentGames, data.lastUpdated);
+      renderTable(currentGames);
+    })
+    .catch(function(error){
+      currentGames = [];
+      setStatus("Live data unavailable. No picks shown. Check /api/dashboard. Error: " + error.message);
+      renderCards(currentGames, null);
+      renderTable(currentGames);
+    });
+}
+
+loadDashboard();
+</script>
+</body>
+</html>
