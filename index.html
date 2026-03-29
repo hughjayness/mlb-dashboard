@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bobby's MLB Betting Dashboard</title>
+  <style>
+    :root{
+      --bg:#14061f;--bg2:#071a26;--panel:#1b1030;--panel2:#10273a;--panel3:#24143f;
+      --text:#f8f7ff;--muted:#c8b9dc;--good:#44f0a1;--warn:#ffd166;--bad:#ff6b8a;
+      --shadow:0 16px 36px rgba(0,0,0,.36);--radius:18px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;font-family:Inter,Arial,Helvetica,sans-serif;color:var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(255,79,216,.18), transparent 24%),
+        radial-gradient(circle at top right, rgba(57,215,255,.14), transparent 24%),
+        linear-gradient(180deg,var(--bg),var(--bg2));
+    }
+    .wrap{max-width:1660px;margin:0 auto;padding:20px}
+    h1{margin:0 0 10px;font-size:34px;letter-spacing:-.02em;text-shadow:0 0 16px rgba(255,79,216,.22)}
+    .topbar{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
+    .controls{display:flex;gap:10px;align-items:end;flex-wrap:wrap}
+    .control{display:flex;flex-direction:column;gap:6px}
+    .control label{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:#ffd8f6}
+    .control select{
+      background:#10273a;
+      color:#f8f7ff;
+      border:1px solid rgba(255,79,216,.35);
+      border-radius:12px;
+      padding:10px 12px;
+      min-width:180px;
+      appearance:auto;
+    }
+    .control select option{
+      background:#10273a;
+      color:#f8f7ff;
+    }
+    .status,.card,.panel{border-radius:var(--radius);box-shadow:var(--shadow)}
+    .status{margin-top:10px;padding:12px 14px;border:1px solid rgba(57,215,255,.45);background:linear-gradient(180deg,rgba(27,16,48,.95),rgba(16,39,58,.92));color:var(--muted)}
+    .cards{display:grid;grid-template-columns:repeat(5,minmax(150px,1fr));gap:14px;margin:18px 0}
+    .card,.panel{background:linear-gradient(180deg,rgba(27,16,48,.98),rgba(16,39,58,.96));border:1px solid rgba(255,79,216,.35);overflow:hidden}
+    .card{padding:16px}
+    .label{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:#ffd8f6}
+    .value{font-size:28px;font-weight:800;margin-top:10px;line-height:1.1;color:#fff7ff}
+    .small{font-size:13px;color:var(--muted);margin-top:8px}
+    .layout{display:grid;grid-template-columns:2.4fr 1fr;gap:16px}
+    .panel-header{padding:16px 18px;border-bottom:1px solid rgba(57,215,255,.28);font-weight:800;display:flex;justify-content:space-between;gap:12px;align-items:center;background:linear-gradient(90deg,rgba(255,79,216,.08),rgba(57,215,255,.08))}
+    .panel-header .muted{color:var(--muted);font-size:13px;font-weight:500}
+    .table-wrap{overflow-x:auto}
+    table{width:100%;border-collapse:collapse;min-width:1500px}
+    th,td{padding:13px 12px;border-bottom:1px solid rgba(255,255,255,.06);text-align:left;font-size:14px;vertical-align:top}
+    th{color:#ffd9f5;font-size:12px;text-transform:uppercase;letter-spacing:.08em;background:rgba(255,79,216,.05);position:sticky;top:0}
+    tbody tr:hover{background:rgba(57,215,255,.08);cursor:pointer}
+    .detail{padding:18px}
+    .detail h2{margin:0 0 6px;font-size:24px;letter-spacing:-.02em}
+    .detail-sub{color:var(--muted);margin-bottom:14px}
+    .detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+    .box,.notes{border-radius:14px;background:linear-gradient(180deg,rgba(16,39,58,.92),rgba(36,20,63,.95));border:1px solid rgba(57,215,255,.24)}
+    .box{padding:12px}
+    .box .k{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:#ffd4f2;margin-bottom:6px}
+    .box .v{font-size:16px;font-weight:700;line-height:1.35}
+    .notes{padding:14px;color:var(--muted);line-height:1.55}
+    .reason-list{margin:8px 0 0;padding-left:18px}
+    .reason-list li{margin:6px 0}
+    .pill{display:inline-block;padding:6px 10px;border-radius:999px;font-size:12px;font-weight:800}
+    .good{background:rgba(68,240,161,.14);color:var(--good)}
+    .warn{background:rgba(255,209,102,.14);color:var(--warn)}
+    .bad{background:rgba(255,107,138,.14);color:var(--bad)}
+    .metric-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .factor-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+    .empty-row{color:var(--muted);text-align:center;padding:28px 12px}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+    @media (max-width:1100px){.cards{grid-template-columns:repeat(2,1fr)}.layout{grid-template-columns:1fr}}
+    @media (max-width:700px){.cards,.detail-grid,.metric-grid,.factor-grid{grid-template-columns:1fr}.wrap{padding:12px}h1{font-size:26px}.value{font-size:24px}.control select{min-width:150px}}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <h1>Bobby's MLB Betting Dashboard</h1>
+    <div class="controls">
+      <div class="control">
+        <label for="confidenceFilter">Confidence Filter</label>
+        <select id="confidenceFilter">
+          <option value="All">All Tiers</option>
+          <option value="High">High</option>
+          <option value="Medium">Medium</option>
+          <option value="Low">Low</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="status" id="statusBox">Loading live data...</div>
+
+  <div class="cards">
+    <div class="card"><div class="label">Games</div><div class="value" id="gamesCount">0</div><div class="small">Upcoming only</div></div>
+    <div class="card"><div class="label">Best Total</div><div class="value" id="bestTotal">—</div><div class="small">Best live total angle</div></div>
+    <div class="card"><div class="label">Best Side</div><div class="value" id="bestSide">—</div><div class="small">Best live side angle</div></div>
+    <div class="card"><div class="label">Top Prop</div><div class="value" id="bestProp">No supported prop returned</div><div class="small" id="bestPropSub">Checked supported BetMGM prop markets for upcoming games</div></div>
+    <div class="card"><div class="label">Last Updated</div><div class="value" id="lastUpdated">—</div><div class="small">Live endpoint timestamp</div></div>
+  </div>
+
+  <div class="layout">
+    <div class="panel">
+      <div class="panel-header">
+        <span>Today's Board</span>
+        <span class="muted">Upcoming / bettable games only</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Matchup</th>
+              <th>Moneyline</th>
+              <th>ML Conf</th>
+              <th>Total</th>
+              <th>O/U Conf</th>
+              <th>Run Line</th>
+              <th>RL Conf</th>
+              <th>Best Bet</th>
+              <th>Type</th>
+              <th>Confidence</th>
+              <th>Why</th>
+            </tr>
+          </thead>
+          <tbody id="gamesTable"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header">
+        <span>Game Detail</span>
+        <span class="muted">Click a row</span>
+      </div>
+      <div class="detail" id="detailPanel">
+        <h2>No live game selected</h2>
+        <div class="detail-sub">When the backend returns games, click a row to inspect the reasoning.</div>
+        <div class="notes">Confidence drivers, risk warnings, and prop detail will appear here.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+var currentGames = [];
+var filteredGames = [];
+
+function setStatus(text){ document.getElementById("statusBox").textContent = text; }
+function formatTimeStamp(value){
+  if (!value) return "—";
+  var d = new Date(value);
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleString();
+}
+function pillClass(label){
+  if (label === "High") return "pill good";
+  if (label === "Medium") return "pill warn";
+  return "pill bad";
+}
+function formatPct(v){
+  if (v === null || v === undefined || v === "") return "—";
+  return String(v) + "%";
+}
+function shortSideConf(game){
+  var away = game.away + " " + formatPct(game.moneylineConfidence ? game.moneylineConfidence.away : null);
+  var home = game.home + " " + formatPct(game.moneylineConfidence ? game.moneylineConfidence.home : null);
+  return away + " / " + home;
+}
+function shortTotalConf(game){
+  var over = "O " + formatPct(game.totalConfidence ? game.totalConfidence.over : null);
+  var under = "U " + formatPct(game.totalConfidence ? game.totalConfidence.under : null);
+  return over + " / " + under;
+}
+function shortRunLineConf(game){
+  var away = game.away + " " + formatPct(game.runLineConfidence ? game.runLineConfidence.away : null);
+  var home = game.home + " " + formatPct(game.runLineConfidence ? game.runLineConfidence.home : null);
+  return away + " / " + home;
+}
+function factorValue(obj, path, fallback) {
+  try {
+    var parts = path.split(".");
+    var cur = obj;
+    for (var i = 0; i < parts.length; i++) cur = cur[parts[i]];
+    if (cur === null || cur === undefined || cur === "") return fallback;
+    return cur;
+  } catch (e) {
+    return fallback;
+  }
+}
+function applyConfidenceFilter() {
+  var selected = document.getElementById("confidenceFilter").value;
+  if (selected === "All") filteredGames = currentGames.slice();
+  else filteredGames = currentGames.filter(function(g){ return (g.confidence || "Low") === selected; });
+
+  renderCards(filteredGames, window._lastUpdated || null);
+  renderTable(filteredGames);
+}
+function renderCards(games, lastUpdated){
+  document.getElementById("gamesCount").textContent = games.length;
+  document.getElementById("lastUpdated").textContent = formatTimeStamp(lastUpdated);
+
+  var bestTotal = "—";
+  var bestSide = "—";
+  var bestProp = "No supported prop returned";
+  var bestPropSub = "Checked supported BetMGM prop markets for filtered upcoming games";
+
+  for (var i = 0; i < games.length; i++) {
+    var g = games[i];
+    if (bestTotal === "—" && g.bestBetType === "Total") bestTotal = g.bestBet || "—";
+    if (bestSide === "—" && g.bestBetType === "Side") bestSide = g.bestBet || "—";
+    if (g.topProp && g.topProp.player) {
+      bestProp = g.topProp.player + " " + (g.topProp.market || "");
+      bestPropSub = (g.topProp.modelProb != null ? g.topProp.modelProb + "% model confidence" : "Live prop returned");
+      break;
+    }
+  }
+
+  document.getElementById("bestTotal").textContent = bestTotal;
+  document.getElementById("bestSide").textContent = bestSide;
+  document.getElementById("bestProp").textContent = bestProp;
+  document.getElementById("bestPropSub").textContent = bestPropSub;
+}
+function renderDetail(game){
+  if (!game) {
+    document.getElementById("detailPanel").innerHTML =
+      '<h2>No live game selected</h2>' +
+      '<div class="detail-sub">When the backend returns games, click a row to inspect the reasoning.</div>' +
+      '<div class="notes">Confidence drivers, risk warnings, and prop detail will appear here.</div>';
+    return;
+  }
+
+  var reasonsHtml = '<div class="notes">No reasoning returned yet from the backend.</div>';
+  if (game.reasons && game.reasons.length) {
+    reasonsHtml = '<div class="notes"><strong>Why this bet:</strong><ul class="reason-list">' +
+      game.reasons.map(function(r){ return '<li>' + r + '</li>'; }).join('') +
+      '</ul></div>';
+  }
+
+  var propHtml = '<div class="notes"><strong>Top Prop:</strong> ' + (game.propStatus || 'No supported prop returned for this game.') + '</div>';
+  if (game.topProp && game.topProp.player) {
+    var propReasons = '';
+    if (game.topProp.reasons && game.topProp.reasons.length) {
+      propReasons = '<ul class="reason-list">' + game.topProp.reasons.map(function(r){
+        return '<li>' + r + '</li>';
+      }).join('') + '</ul>';
+    }
+    propHtml =
+      '<div class="notes"><strong>Top Prop:</strong> ' + game.topProp.player + ' — ' + (game.topProp.market || '—') +
+      '<br><strong>Model %:</strong> ' + (game.topProp.modelProb != null ? game.topProp.modelProb + '%' : '—') +
+      propReasons + '</div>';
+  }
+
+  var factorGrid =
+    '<div class="factor-grid">' +
+      '<div class="box"><div class="k">Starting Pitcher Driver</div><div class="v">' + factorValue(game, "componentScores.side.startingPitcher", "Awaiting live feed") + '</div></div>' +
+      '<div class="box"><div class="k">Bullpen Driver</div><div class="v">' + factorValue(game, "componentScores.side.bullpen", "Awaiting live feed") + '</div></div>' +
+      '<div class="box"><div class="k">Lineup Driver</div><div class="v">' + factorValue(game, "componentScores.side.lineup", "Awaiting live feed") + '</div></div>' +
+      '<div class="box"><div class="k">Weather / Park Driver</div><div class="v">' + factorValue(game, "componentScores.side.parkWeather", "Awaiting live feed") + '</div></div>' +
+      '<div class="box"><div class="k">Defense / Catching Driver</div><div class="v">' + factorValue(game, "componentScores.side.defense", "Awaiting live feed") + '</div></div>' +
+      '<div class="box"><div class="k">Travel / Schedule Driver</div><div class="v">' + factorValue(game, "componentScores.side.scheduleTravel", "Awaiting live feed") + '</div></div>' +
+    '</div>';
+
+  var riskWarnings = '<div class="notes"><strong>Risk Warnings:</strong> None returned.</div>';
+  if (game.riskWarnings && game.riskWarnings.length) {
+    riskWarnings = '<div class="notes"><strong>Risk Warnings:</strong><ul class="reason-list">' +
+      game.riskWarnings.map(function(r){ return '<li>' + r + '</li>'; }).join('') +
+      '</ul></div>';
+  }
+
+  document.getElementById("detailPanel").innerHTML =
+    '<h2>' + (game.away || "Away") + ' @ ' + (game.home || "Home") + '</h2>' +
+    '<div class="detail-sub">' + (game.time || "—") + '</div>' +
+    '<div class="detail-grid">' +
+      '<div class="box"><div class="k">Best Bet</div><div class="v">' + (game.bestBet || "—") + '</div></div>' +
+      '<div class="box"><div class="k">Confidence</div><div class="v"><span class="' + pillClass(game.confidence || "Low") + '">' + (game.confidence || "Low") + '</span></div></div>' +
+      '<div class="box"><div class="k">Moneyline</div><div class="v">' + (game.moneyline || "N/A") + '</div></div>' +
+      '<div class="box"><div class="k">Run Line</div><div class="v">' + (game.runLine || "N/A") + '</div></div>' +
+      '<div class="box"><div class="k">Total</div><div class="v">' + (game.total || "N/A") + '</div></div>' +
+      '<div class="box"><div class="k">Timing / Stake</div><div class="v">' + (game.recommendedTiming || "—") + ' / ' + (game.recommendedStakeUnits != null ? game.recommendedStakeUnits + "u" : "—") + '</div></div>' +
+    '</div>' +
+    '<div class="metric-grid">' +
+      '<div class="box"><div class="k">Moneyline Confidence</div><div class="v">' + shortSideConf(game) + '</div></div>' +
+      '<div class="box"><div class="k">Run Line Confidence</div><div class="v">' + shortRunLineConf(game) + '</div></div>' +
+      '<div class="box"><div class="k">Over / Under Confidence</div><div class="v">' + shortTotalConf(game) + '</div></div>' +
+      '<div class="box"><div class="k">Fair Prices</div><div class="v">Away ' + (game.fairMlAway || "—") + ' / Home ' + (game.fairMlHome || "—") + '<br>Fair Total ' + (game.fairTotal || "—") + '</div></div>' +
+    '</div>' +
+    '<div style="height:12px"></div>' +
+    '<div class="notes"><strong>Confidence Drivers:</strong> The model can improve confidence further with live pitcher shape, bullpen fatigue, confirmed lineups, offense splits, defense/catcher impact, weather/park effects, and travel context. Values below will populate as those feeds are added.</div>' +
+    factorGrid +
+    '<div style="height:12px"></div>' +
+    reasonsHtml +
+    '<div style="height:12px"></div>' +
+    riskWarnings +
+    '<div style="height:12px"></div>' +
+    propHtml;
+}
+function renderTable(games){
+  var tbody = document.getElementById("gamesTable");
+  tbody.innerHTML = "";
+  if (!games.length) {
+    tbody.innerHTML = '<tr><td colspan="12" class="empty-row">No upcoming live data available for the selected confidence tier.</td></tr>';
+    renderDetail(null);
+    return;
+  }
+
+  for (var i = 0; i < games.length; i++) {
+    var game = games[i];
+    var whyShort = "No reasoning returned";
+    if (game.reasons && game.reasons.length) whyShort = game.reasons.slice(0, 2).join(" • ");
+
+    var tr = document.createElement("tr");
+    tr.innerHTML =
+      "<td>" + (game.time || "—") + "</td>" +
+      "<td>" + (game.away || "Away") + " @ " + (game.home || "Home") + "</td>" +
+      "<td>" + (game.moneyline || "N/A") + "</td>" +
+      "<td>" + shortSideConf(game) + "</td>" +
+      "<td>" + (game.total || "N/A") + "</td>" +
+      "<td>" + shortTotalConf(game) + "</td>" +
+      "<td>" + (game.runLine || "N/A") + "</td>" +
+      "<td>" + shortRunLineConf(game) + "</td>" +
+      "<td>" + (game.bestBet || "—") + "</td>" +
+      "<td>" + (game.bestBetType || "—") + "</td>" +
+      "<td><span class='" + pillClass(game.confidence || "Low") + "'>" + (game.confidence || "Low") + "</span></td>" +
+      "<td>" + whyShort + "</td>";
+    (function(g){ tr.addEventListener("click", function(){ renderDetail(g); }); })(game);
+    tbody.appendChild(tr);
+  }
+  renderDetail(games[0]);
+}
+function normalizeLiveData(data){
+  if (!data || !Array.isArray(data.games)) return [];
+  return data.games.map(function(game) {
+    var topProp = null;
+    if (game.topProp && game.topProp.player) {
+      topProp = {
+        player: game.topProp.player,
+        market: game.topProp.market || "",
+        modelProb: game.topProp.modelProb,
+        reasons: Array.isArray(game.topProp.reasons) ? game.topProp.reasons : []
+      };
+    }
+    return {
+      id: game.id || "",
+      time: game.time || "—",
+      away: game.away || "Away",
+      home: game.home || "Home",
+      moneyline: game.moneyline || "N/A",
+      runLine: game.runLine || "N/A",
+      total: game.total || "N/A",
+      bestBet: game.bestBet || "—",
+      bestBetType: game.bestBetType || "—",
+      confidence: game.confidence || "Low",
+      reasons: Array.isArray(game.reasons) ? game.reasons : [],
+      topProp: topProp,
+      propStatus: game.propStatus || "No supported prop returned for this game.",
+      moneylineConfidence: game.moneylineConfidence || null,
+      totalConfidence: game.totalConfidence || null,
+      runLineConfidence: game.runLineConfidence || null,
+      fairMlAway: game.fairMlAway || null,
+      fairMlHome: game.fairMlHome || null,
+      fairTotal: game.fairTotal || null,
+      recommendedTiming: game.recommendedTiming || null,
+      recommendedStakeUnits: game.recommendedStakeUnits,
+      componentScores: game.componentScores || null,
+      riskWarnings: Array.isArray(game.riskWarnings) ? game.riskWarnings : []
+    };
+  });
+}
+function loadDashboard(){
+  fetch("/api/dashboard", { cache: "no-store" })
+    .then(function(response){
+      return response.text().then(function(text) {
+        if (!response.ok) throw new Error("API returned " + response.status + ": " + text);
+        try { return JSON.parse(text); }
+        catch (e) { throw new Error("API did not return valid JSON: " + text); }
+      });
+    })
+    .then(function(data){
+      window._lastUpdated = data.lastUpdated || null;
+      currentGames = normalizeLiveData(data);
+      if (!currentGames.length) setStatus("Live data responded, but no upcoming usable games were returned.");
+      else setStatus("Live data loaded successfully.");
+      applyConfidenceFilter();
+    })
+    .catch(function(error){
+      currentGames = [];
+      filteredGames = [];
+      setStatus("Live data unavailable. No picks shown. Check /api/dashboard. " + error.message);
+      renderCards([], null);
+      renderTable([]);
+      console.error(error);
+    });
+}
+document.getElementById("confidenceFilter").addEventListener("change", applyConfidenceFilter);
+loadDashboard();
+</script>
+</body>
+</html>
