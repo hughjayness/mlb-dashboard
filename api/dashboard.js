@@ -2,9 +2,7 @@ module.exports = async function handler(req, res) {
   const apiKey = process.env.ODDS_API_KEY;
 
   if (!apiKey) {
-    return res.status(500).json({
-      error: "Missing ODDS_API_KEY"
-    });
+    return res.status(500).json({ error: "Missing ODDS_API_KEY" });
   }
 
   const nowIso = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
@@ -166,8 +164,8 @@ module.exports = async function handler(req, res) {
       lastUpdated: new Date().toISOString(),
       notes: [
         "Official lineups are checked from MLB starting-lineups page first.",
-        "If a real 1-9 lineup is found for both teams, hitter props use official lineup mode.",
-        "If not, props stay in projected mode."
+        "Props are now optional challengers and must clearly beat game markets.",
+        "Timing/stake remains in JSON but can be hidden in the HTML."
       ],
       games
     });
@@ -184,14 +182,10 @@ async function fetchOfficialLineupsFromMLB() {
 
   try {
     const response = await fetch(url, {
-      headers: {
-        "user-agent": "Mozilla/5.0"
-      }
+      headers: { "user-agent": "Mozilla/5.0" }
     });
 
-    if (!response.ok) {
-      return {};
-    }
+    if (!response.ok) return {};
 
     const html = await response.text();
     return parseMLBStartingLineups(html);
@@ -225,18 +219,11 @@ function parseMLBStartingLineups(html) {
       const home = normalizeTeamName(lines[i + 2]);
 
       const key = matchupKey(away, home);
-      const block = lines.slice(i, Math.min(i + 160, lines.length));
+      const block = lines.slice(i, Math.min(i + 220, lines.length));
 
-      const awayMarker =
-        findIndexInBlock(block, `${teamAbbrevHint(away)} Lineup`) ??
-        findIndexInBlock(block, `${away} Lineup`);
-
-      const homeMarker =
-        findIndexInBlock(block, `${teamAbbrevHint(home)} Lineup`) ??
-        findIndexInBlock(block, `${home} Lineup`);
-
-      const awayPlayers = awayMarker !== null ? extractNinePlayers(block, awayMarker + 1) : [];
-      const homePlayers = homeMarker !== null ? extractNinePlayers(block, homeMarker + 1) : [];
+      const lineupGroups = extractTeamLineupGroups(block, away, home);
+      const awayPlayers = firstValidLineup(lineupGroups.away);
+      const homePlayers = firstValidLineup(lineupGroups.home);
 
       map[key] = {
         awayTeam: away,
@@ -250,35 +237,64 @@ function parseMLBStartingLineups(html) {
   return map;
 }
 
-function findIndexInBlock(block, marker) {
-  for (let i = 0; i < block.length; i++) {
-    if (block[i] === marker) return i;
-  }
-  return null;
-}
+function extractTeamLineupGroups(block, awayTeam, homeTeam) {
+  const result = { away: [], home: [] };
 
-function extractNinePlayers(block, startIndex) {
-  const players = [];
-  for (let i = startIndex; i < block.length && players.length < 9; i++) {
+  for (let i = 0; i < block.length; i++) {
     const line = block[i];
 
-    if (/^\d+\.\s+TBD$/i.test(line)) {
-      return [];
+    if (line === `${teamAbbrevHint(awayTeam)} Lineup` || line === `${awayTeam} Lineup`) {
+      result.away.push(extractOneLineup(block, i + 1));
     }
 
-    const withPos = line.match(/^\d+\.\s+(.+?)\s+\(([LRS])\)\s+[A-Z0-9]+$/);
-    if (withPos) {
-      players.push(withPos[1].trim());
-      continue;
-    }
-
-    const noPos = line.match(/^\d+\.\s+(.+?)\s+\(([LRS])\)$/);
-    if (noPos) {
-      players.push(noPos[1].trim());
-      continue;
+    if (line === `${teamAbbrevHint(homeTeam)} Lineup` || line === `${homeTeam} Lineup`) {
+      result.home.push(extractOneLineup(block, i + 1));
     }
   }
-  return players.length === 9 ? players : [];
+
+  return result;
+}
+
+function extractOneLineup(block, startIndex) {
+  const players = [];
+
+  for (let i = startIndex; i < block.length; i++) {
+    const line = block[i];
+
+    if (/Lineup$/.test(line) && players.length > 0) break;
+    if (/^Gameday/.test(line) && players.length > 0) break;
+    if (/^\d+\.\s+TBD$/i.test(line)) return [];
+
+    const fullNameMatch = line.match(/^\d+\.\s+(.+?)\s+\(([LRS])\)\s+[A-Z0-9]+$/);
+    if (fullNameMatch) {
+      players.push(fullNameMatch[1].trim());
+      continue;
+    }
+
+    const shortNameMatch = line.match(/^\d+\.\s+(.+?)\s+\(([LRS])\)\s+[A-Z]{1,3}$/);
+    if (shortNameMatch) {
+      players.push(shortNameMatch[1].trim());
+      continue;
+    }
+
+    const noPosMatch = line.match(/^\d+\.\s+(.+?)\s+\(([LRS])\)$/);
+    if (noPosMatch) {
+      players.push(noPosMatch[1].trim());
+      continue;
+    }
+
+    if (players.length >= 9) break;
+  }
+
+  return players;
+}
+
+function firstValidLineup(groups) {
+  if (!Array.isArray(groups)) return [];
+  for (const g of groups) {
+    if (Array.isArray(g) && g.length === 9) return g;
+  }
+  return [];
 }
 
 function buildLineupContext({ homeTeam, awayTeam, mlbLineups }) {
@@ -310,10 +326,7 @@ function buildLineupContext({ homeTeam, awayTeam, mlbLineups }) {
           players: official.homePlayers.map(name => ({ name }))
         }
       }
-    : {
-        away: null,
-        home: null
-      };
+    : { away: null, home: null };
 
   return {
     lineupMode: hasOfficial ? "official" : "projected",
@@ -330,7 +343,7 @@ function buildProjectedLineupShell(teamName) {
     team: teamName,
     status: "projected",
     players: [],
-    note: "Projected lineup placeholder. Connect projected lineup feed to populate."
+    note: "Projected lineup placeholder."
   };
 }
 
@@ -473,10 +486,10 @@ function buildRecommendation({
   componentScores,
   propResult
 }) {
-  const candidates = [];
+  const gameCandidates = [];
 
   if (typeof modelOutputs.homeEdgePct === "number") {
-    candidates.push({
+    gameCandidates.push({
       bestBet: `${homeTeam} ML`,
       bestBetType: "Side",
       edge: modelOutputs.homeEdgePct,
@@ -486,7 +499,7 @@ function buildRecommendation({
   }
 
   if (typeof modelOutputs.awayEdgePct === "number") {
-    candidates.push({
+    gameCandidates.push({
       bestBet: `${awayTeam} ML`,
       bestBetType: "Side",
       edge: modelOutputs.awayEdgePct,
@@ -496,7 +509,7 @@ function buildRecommendation({
   }
 
   if (totalData.point !== null && typeof modelOutputs.overEdgePct === "number") {
-    candidates.push({
+    gameCandidates.push({
       bestBet: `Over ${totalData.point}`,
       bestBetType: "Total",
       edge: modelOutputs.overEdgePct,
@@ -506,7 +519,7 @@ function buildRecommendation({
   }
 
   if (totalData.point !== null && typeof modelOutputs.underEdgePct === "number") {
-    candidates.push({
+    gameCandidates.push({
       bestBet: `Under ${totalData.point}`,
       bestBetType: "Total",
       edge: modelOutputs.underEdgePct,
@@ -515,9 +528,14 @@ function buildRecommendation({
     });
   }
 
+  const positiveGames = gameCandidates.filter(c => typeof c.edge === "number" && c.edge > 0);
+  const bestGame = positiveGames.sort((a, b) => b.edge - a.edge)[0] || null;
+
+  let best = bestGame;
+
   if (propResult && propResult.topProp && typeof propResult.topProp.modelProb === "number") {
     const propEdge = Math.abs(propResult.topProp.modelProb - 50);
-    candidates.push({
+    const propCandidate = {
       bestBet: `${propResult.topProp.player} ${propResult.topProp.market}`,
       bestBetType: "Prop",
       edge: propEdge,
@@ -530,11 +548,13 @@ function buildRecommendation({
           : "Official lineup mode is active for this prop."
       ],
       scoreForConfidence: propEdge
-    });
-  }
+    };
 
-  const positiveCandidates = candidates.filter(c => typeof c.edge === "number" && c.edge > 0);
-  const best = positiveCandidates.sort((a, b) => b.edge - a.edge)[0];
+    const propMustBeatBy = 0.8;
+    if (!bestGame || propCandidate.edge >= bestGame.edge + propMustBeatBy) {
+      best = propCandidate;
+    }
+  }
 
   if (!best) {
     return {
@@ -554,16 +574,14 @@ function buildRecommendation({
 
   const confidenceScore = round1(best.scoreForConfidence);
   const confidence = confidenceFromEdge(best.scoreForConfidence);
-  const recommendedTiming = timingFromContext(componentScores, best.bestBetType, best.edge);
-  const recommendedStakeUnits = stakeFromConfidence(confidence);
 
   return {
     bestBet: best.bestBet,
     bestBetType: best.bestBetType,
     confidence,
     confidenceScore,
-    recommendedTiming,
-    recommendedStakeUnits,
+    recommendedTiming: "—",
+    recommendedStakeUnits: null,
     reasons: best.reasons,
     riskWarnings: buildRiskWarnings(componentScores)
   };
@@ -606,30 +624,6 @@ function buildRiskWarnings(componentScores) {
   if (componentScores.liveFeedStatus.parkWeather !== "live") warnings.push("Weather and park adjustments are not yet live.");
   if (componentScores.liveFeedStatus.scheduleTravel !== "live") warnings.push("Schedule and travel adjustments are not yet live.");
   return warnings;
-}
-
-function timingFromContext(componentScores, bestBetType, edge) {
-  const lineupMode = componentScores.liveFeedStatus.lineup;
-  const hasPendingWeather = componentScores.liveFeedStatus.parkWeather !== "live";
-
-  if (edge <= 0) return "Pass";
-  if (bestBetType === "Total" && hasPendingWeather) return "Wait for weather";
-  if ((bestBetType === "Side" || bestBetType === "Prop") && lineupMode === "projected") return "Wait for lineup";
-  if (edge >= 4) return "Bet now";
-  return "Wait for better number";
-}
-
-function stakeFromConfidence(confidence) {
-  if (confidence === "High") return 1.5;
-  if (confidence === "Medium") return 1.0;
-  if (confidence === "Low") return 0.5;
-  return 0;
-}
-
-function confidenceFromEdge(edgeAbsPct) {
-  if (edgeAbsPct >= 6) return "High";
-  if (edgeAbsPct >= 3) return "Medium";
-  return "Low";
 }
 
 async function fetchTopPropForEvent(eventId, apiKey, lineupContext) {
@@ -709,24 +703,12 @@ function buildTopPropOverallReason(topProp, lineupContext) {
   if (!topProp) return "No supported BetMGM prop returned.";
 
   const reasons = [];
-
   reasons.push("This was the highest-scoring supported prop returned by BetMGM.");
-  if (typeof topProp.rankingScore === "number") {
-    reasons.push(`Ranking score: ${topProp.rankingScore}.`);
-  }
+  if (typeof topProp.rankingScore === "number") reasons.push(`Ranking score: ${topProp.rankingScore}.`);
   reasons.push(`Market: ${topProp.market}.`);
-  if (typeof topProp.modelProb === "number") {
-    reasons.push(`Its current model probability graded at ${topProp.modelProb}%.`);
-  }
-  if (lineupContext.lineupMode === "official") {
-    reasons.push("It was evaluated using official lineup mode, which allows stronger confidence.");
-  } else {
-    reasons.push("It was evaluated using projected lineup mode, so confidence is capped until official lineups post.");
-  }
-  if (Array.isArray(topProp.reasons) && topProp.reasons.length) {
-    reasons.push(topProp.reasons[0]);
-  }
-
+  if (typeof topProp.modelProb === "number") reasons.push(`Its current model probability graded at ${topProp.modelProb}%.`);
+  if (lineupContext.lineupMode === "official") reasons.push("It was evaluated using official lineup mode.");
+  else reasons.push("It was evaluated using projected lineup mode.");
   return reasons.join(" ");
 }
 
@@ -741,11 +723,7 @@ function passesLineupScenario(outcome, marketKey, lineupContext) {
 
   return activeLineup.some(name => {
     const n = normalizeName(name);
-    return (
-      n === playerName ||
-      n.includes(playerName) ||
-      playerName.includes(n)
-    );
+    return n === playerName || n.includes(playerName) || playerName.includes(n);
   });
 }
 
@@ -778,18 +756,28 @@ function normalizeName(name) {
 
 function scorePropOutcome(marketKey, outcome, lineupContext) {
   let score = 0;
-  if (outcome.name === "Over") score += 20;
-  if (typeof outcome.price === "number" && outcome.price < 0) {
-    score += Math.min(Math.abs(outcome.price), 250) / 10;
-  }
-  if (marketKey === "pitcher_strikeouts") score += 8;
-  if (marketKey === "pitcher_outs") score += 7;
-  if (marketKey === "batter_total_bases") score += 6;
-  if (marketKey === "batter_hits") score += 5;
-  if (marketKey === "batter_home_runs") score += 2;
+  const marketProb = americanToProb(outcome.price);
+  if (marketProb == null) return -999;
 
-  if (lineupContext.lineupMode === "official") score += 8;
-  else score -= 4;
+  if (outcome.name === "Over") score += 4;
+  if (outcome.name === "Under") score += 2;
+
+  if (marketKey === "pitcher_strikeouts") score += 3.5;
+  if (marketKey === "pitcher_outs") score += 3.5;
+  if (marketKey === "batter_hits") score += 3.5;
+  if (marketKey === "batter_total_bases") score += 3.5;
+  if (marketKey === "batter_home_runs") score += 1.0;
+
+  if (lineupContext.lineupMode === "official") score += 2.5;
+  else score -= 2.5;
+
+  if (marketKey === "pitcher_strikeouts") score -= 2.0;
+  if (marketKey === "pitcher_outs") score -= 1.8;
+  if (marketKey === "batter_hits") score -= 1.8;
+  if (marketKey === "batter_total_bases") score -= 2.1;
+  if (marketKey === "batter_home_runs") score -= 4.5;
+
+  if (typeof outcome.price === "number" && outcome.price < -170) score -= 1.0;
 
   return score;
 }
@@ -815,26 +803,22 @@ function buildPropReasons(marketKey, outcome, lineupContext) {
   reasons.push(`Lineup mode: ${lineupContext.lineupMode}.`);
   reasons.push(`Lineup source: ${lineupContext.lineupSource}.`);
 
-  if (outcome.name === "Over") reasons.push("Current phase-1 logic prefers the over side.");
-  else if (outcome.name === "Under") reasons.push("Current phase-1 logic prefers the under side.");
-
   if (typeof outcome.price === "number") {
-    if (outcome.price < 0) reasons.push(`Book prices this as a favored outcome at ${formatAmerican(outcome.price)}.`);
-    else reasons.push(`Book prices this as a plus-money outcome at ${formatAmerican(outcome.price)}.`);
+    reasons.push(`Book price observed at ${formatAmerican(outcome.price)}.`);
   }
 
   if (lineupContext.lineupMode === "projected") {
-    reasons.push("Projected-lineup props are capped until official lineups are connected.");
+    reasons.push("Projected-lineup props carry extra uncertainty.");
   } else {
-    reasons.push("Official lineup mode supports stronger prop confidence.");
+    reasons.push("Official lineup is posted.");
   }
 
   switch (marketKey) {
-    case "pitcher_strikeouts": reasons.push("Pitcher strikeout props are a strong first prop category to track."); break;
-    case "pitcher_outs": reasons.push("Pitcher outs can be steadier than higher-variance hitter props."); break;
-    case "batter_total_bases": reasons.push("Total bases props are useful for power-hitter evaluation."); break;
-    case "batter_hits": reasons.push("Hits props are generally steadier than home run props."); break;
-    case "batter_home_runs": reasons.push("Home run props are more volatile than most prop types."); break;
+    case "pitcher_strikeouts": reasons.push("Strikeout props can be useful, but they no longer get built-in preference."); break;
+    case "pitcher_outs": reasons.push("Pitcher outs are treated as a medium-variance prop."); break;
+    case "batter_total_bases": reasons.push("Total bases are treated as a medium-variance hitter prop."); break;
+    case "batter_hits": reasons.push("Hits props are treated as a medium-variance hitter prop."); break;
+    case "batter_home_runs": reasons.push("Home runs remain a high-variance prop."); break;
   }
 
   return reasons;
