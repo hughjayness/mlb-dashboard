@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bobby's MLB Betting Dashboard</title>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <style>
+    :root{
+      --bg:#14061f;--bg2:#071a26;--panel:#1b1030;--text:#f8f7ff;--muted:#c8b9dc;
+      --good:#44f0a1;--warn:#ffd166;--bad:#ff6b8a;--radius:18px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;font-family:Inter,Arial,sans-serif;color:var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(255,79,216,.18), transparent 24%),
+        radial-gradient(circle at top right, rgba(57,215,255,.14), transparent 24%),
+        linear-gradient(180deg,var(--bg),var(--bg2));
+    }
+    .wrap{max-width:1600px;margin:0 auto;padding:20px}
+    h1{margin:0 0 10px;font-size:34px}
+    .topbar,.toolbar,.controls{display:flex;gap:10px;flex-wrap:wrap;align-items:end}
+    .topbar{justify-content:space-between}
+    .btn,.control select{
+      background:#10273a;color:#f8f7ff;border:1px solid rgba(255,79,216,.35);
+      border-radius:12px;padding:10px 12px
+    }
+    .btn{cursor:pointer;font-weight:700}
+    .control{display:flex;flex-direction:column;gap:6px}
+    .control label{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:#ffd8f6}
+    .status,.card,.panel{
+      border-radius:var(--radius);
+      background:linear-gradient(180deg,rgba(27,16,48,.98),rgba(16,39,58,.96));
+      border:1px solid rgba(255,79,216,.35)
+    }
+    .status{margin-top:10px;padding:12px 14px;color:var(--muted)}
+    .cards{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:14px;margin:18px 0}
+    .card{padding:16px}
+    .label{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:#ffd8f6}
+    .value{font-size:28px;font-weight:800;margin-top:10px;line-height:1.1}
+    .small{font-size:13px;color:var(--muted);margin-top:8px}
+    .panel-header{
+      padding:16px 18px;border-bottom:1px solid rgba(57,215,255,.28);
+      font-weight:800;display:flex;justify-content:space-between;align-items:center
+    }
+    .muted{color:var(--muted);font-size:13px}
+    .detail{padding:18px}
+    .detail h2{margin:0 0 6px;font-size:24px}
+    .detail-sub{color:var(--muted);margin-bottom:14px}
+    .detail-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:14px}
+    .detail-col{display:grid;gap:10px}
+    .box,.notes{
+      border-radius:14px;background:linear-gradient(180deg,rgba(16,39,58,.92),rgba(36,20,63,.95));
+      border:1px solid rgba(57,215,255,.24)
+    }
+    .box{padding:12px}
+    .box .k{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:#ffd4f2;margin-bottom:6px}
+    .box .v{font-size:16px;font-weight:700;line-height:1.35}
+    .notes{padding:14px;color:var(--muted);line-height:1.55}
+    .reason-list{margin:8px 0 0;padding-left:18px}
+    .pill{display:inline-block;padding:6px 10px;border-radius:999px;font-size:12px;font-weight:800}
+    .good{background:rgba(68,240,161,.14);color:var(--good)}
+    .warn{background:rgba(255,209,102,.14);color:var(--warn)}
+    .bad{background:rgba(255,107,138,.14);color:var(--bad)}
+    .inline{display:flex;justify-content:space-between;gap:10px;align-items:center}
+    .factor-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:12px}
+    .debug-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+    .debug-pre{white-space:pre-wrap;word-break:break-word;font-family:Consolas,Monaco,monospace;font-size:12px;line-height:1.45;color:#d8f6ff}
+    .table-wrap{overflow-x:auto}
+    table{width:100%;border-collapse:collapse;min-width:1200px}
+    th,td{padding:13px 12px;border-bottom:1px solid rgba(255,255,255,.06);text-align:left;font-size:14px;vertical-align:top}
+    th{color:#ffd9f5;font-size:12px;text-transform:uppercase;letter-spacing:.08em;background:rgba(255,79,216,.05)}
+    tbody tr:hover{background:rgba(57,215,255,.08);cursor:pointer}
+    .empty-row{color:var(--muted);text-align:center;padding:28px 12px}
+    @media (max-width:1100px){.cards{grid-template-columns:repeat(2,1fr)}.detail-grid,.factor-grid,.debug-grid{grid-template-columns:1fr}}
+    @media (max-width:700px){.cards{grid-template-columns:1fr}.wrap{padding:12px}h1{font-size:26px}}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div>
+      <h1>Bobby's MLB Betting Dashboard</h1>
+      <div class="toolbar" style="margin-top:10px;">
+        <button class="btn" id="openTrackerBtn">Open Pick Tracker</button>
+      </div>
+    </div>
+    <div class="controls">
+      <div class="control">
+        <label for="confidenceFilter">Best Bet Confidence Filter</label>
+        <select id="confidenceFilter">
+          <option value="All" selected>All Tiers</option>
+          <option value="High">High</option>
+          <option value="Medium">Medium</option>
+          <option value="Low">Low</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="status" id="statusBox">Loading live data...</div>
+
+  <div class="cards">
+    <div class="card"><div class="label">Games</div><div class="value" id="gamesCount">0</div><div class="small">Current filter view</div></div>
+    <div class="card"><div class="label">Best Total</div><div class="value" id="bestTotal">—</div><div class="small">Best total angle by current filter</div></div>
+    <div class="card"><div class="label">Best Side</div><div class="value" id="bestSide">—</div><div class="small">Best side angle by current filter</div></div>
+    <div class="card"><div class="label">Top Optional Prop</div><div class="value" id="bestProp">—</div><div class="small" id="bestPropSub">Shown only when a live prop qualifies</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <span>Today's Board</span>
+      <span class="muted">Defaults to all picks</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>First Pitch (ET)</th>
+            <th>Matchup</th>
+            <th>Moneyline</th>
+            <th>Total</th>
+            <th>Run Line</th>
+            <th>Best Bet</th>
+            <th>Type</th>
+            <th>Confidence</th>
+            <th>Why</th>
+          </tr>
+        </thead>
+        <tbody id="gamesTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-top:16px;">
+    <div class="panel-header">
+      <span>Game Detail</span>
+      <span class="muted">Click a row from Today’s Board</span>
+    </div>
+    <div class="detail" id="detailPanel">
+      <h2>No live game selected</h2>
+      <div class="detail-sub">When the backend returns games, click a row to inspect the reasoning.</div>
+      <div class="notes">Confidence drivers, risk warnings, and prop detail will appear here.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+var currentGames = [];
+var filteredGames = [];
+var TRACKER_STORAGE_KEY = "bobby_mlb_tracker_archive_v2";
+
+function setStatus(text) {
+  document.getElementById("statusBox").textContent = text;
+}
+
+function pillClass(label) {
+  if (label === "High") return "pill good";
+  if (label === "Medium") return "pill warn";
+  return "pill bad";
+}
+
+function formatPct(v) {
+  return v === null || v === undefined || v === "" ? "—" : String(v) + "%";
+}
+
+function formatOdds(v) {
+  if (v === null || v === undefined || v === "") return "—";
+  var n = Number(v);
+  if (!isFinite(n)) return String(v);
+  return n > 0 ? "+" + n : String(n);
+}
+
+function formatDriverValue(v) {
+  if (v === null || v === undefined || v === "") return "—";
+  var n = Number(v);
+  if (!isFinite(n)) return String(v);
+  if (n === 0) return "0.00";
+  return (n > 0 ? "+" : "") + n.toFixed(2);
+}
+
+function driverDirectionText(value, positiveLabel, negativeLabel) {
+  var n = Number(value);
+  if (!isFinite(n)) return "No live signal";
+  if (Math.abs(n) < 0.15) return "Mostly neutral";
+  return n > 0 ? positiveLabel : negativeLabel;
+}
+
+function driverExplanation(path, game) {
+  switch (path) {
+    case "componentScores.side.startingPitcher":
+      return "Compares the probable starters. Positive favors the home starter edge; negative favors the away starter edge.";
+    case "componentScores.side.bullpen":
+      return "Compares team pitching depth and run prevention. Positive favors the home bullpen; negative favors the away bullpen.";
+    case "componentScores.side.lineup":
+      return game.lineupMode === "official"
+        ? "Uses confirmed lineups. Positive favors the home batting order; negative favors the away batting order."
+        : "Uses lineup mode as a confidence adjustment. Official lineups strengthen trust; projected lineups reduce certainty.";
+    case "componentScores.side.offenseVsHand":
+      return "Compares overall offense quality. Positive favors the home offense; negative favors the away offense.";
+    case "componentScores.total.parkFactor":
+      return "Estimates how hitter-friendly the park is. Positive leans over; negative leans under.";
+    default:
+      return "Model input used in confidence scoring.";
+  }
+}
+
+function shortSideConf(game) {
+  return game.away + " " + formatPct(game.moneylineConfidence && game.moneylineConfidence.away) +
+    " / " + game.home + " " + formatPct(game.moneylineConfidence && game.moneylineConfidence.home);
+}
+
+function shortTotalConf(game) {
+  return "Over " + formatPct(game.totalConfidence && game.totalConfidence.over) +
+    " / Under " + formatPct(game.totalConfidence && game.totalConfidence.under);
+}
+
+function shortRunLineConf(game) {
+  return game.away + " " + formatPct(game.runLineConfidence && game.runLineConfidence.away) +
+    " / " + game.home + " " + formatPct(game.runLineConfidence && game.runLineConfidence.home);
+}
+
+function factorValue(obj, path, fallback) {
+  try {
+    var parts = path.split(".");
+    var cur = obj;
+    for (var i = 0; i < parts.length; i++) cur = cur[parts[i]];
+    return cur === null || cur === undefined || cur === "" ? fallback : cur;
+  } catch (e) {
+    return fallback;
+  }
+}
+
+function extractTotalLine(totalText) {
+  var m = String(totalText || "").match(/O\/U\s+([0-9.]+)/i);
+  return m ? m[1] : "";
+}
+
+function getTrackedPicks() {
+  try {
+    var raw = localStorage.getItem(TRACKER_STORAGE_KEY);
+    var arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function setTrackedPicks(arr) {
+  localStorage.setItem(TRACKER_STORAGE_KEY, JSON.stringify(arr));
+}
+
+function archiveIdForGame(game) {
+  return [
+    game.eventId || "",
+    game.rawCommenceTime || "",
+    game.bestBet || "",
+    game.bestBetType || ""
+  ].join("|");
+}
+
+function archiveHighConfidencePicks(games) {
+  if (!Array.isArray(games) || !games.length) return 0;
+
+  var existing = getTrackedPicks();
+  var map = {};
+
+  existing.forEach(function(p) {
+    var key = p.archiveId || [
+      p.eventId || "",
+      p.rawCommenceTime || "",
+      p.bestBet || "",
+      p.bestBetType || ""
+    ].join("|");
+    map[key] = p;
+  });
+
+  var added = 0;
+
+  games.forEach(function(game) {
+    if (!game) return;
+    if ((game.confidence || "") !== "High") return;
+    if (!game.bestBet || game.bestBet === "Pass") return;
+
+    var record = {
+      archiveId: archiveIdForGame(game),
+      archivedAt: new Date().toISOString(),
+      source: "Auto-archived from index",
+      eventId: game.eventId || "",
+      rawCommenceTime: game.rawCommenceTime || "",
+      away: game.away || "",
+      home: game.home || "",
+      matchup: (game.away || "") + " @ " + (game.home || ""),
+      bestBet: game.bestBet || "",
+      bestBetType: game.bestBetType || "",
+      confidence: game.confidence || "Low",
+      oddsPrice: game.bestBetOdds != null ? game.bestBetOdds : null,
+      moneyline: game.moneyline || "",
+      total: game.total || "",
+      runLine: game.runLine || "",
+      resultStatus: "Pending",
+      resultDetail: "",
+      grade: "",
+      netUnits: null,
+      profitDollars: null
+    };
+
+    if (!map[record.archiveId]) {
+      map[record.archiveId] = record;
+      added += 1;
+    } else {
+      map[record.archiveId] = Object.assign({}, map[record.archiveId], {
+        confidence: record.confidence,
+        oddsPrice: record.oddsPrice,
+        moneyline: record.moneyline,
+        total: record.total,
+        runLine: record.runLine
+      });
+    }
+  });
+
+  var merged = Object.keys(map).map(function(k) { return map[k]; });
+  setTrackedPicks(merged);
+  return added;
+}
+
+function applyConfidenceFilter() {
+  var selected = document.getElementById("confidenceFilter").value;
+  filteredGames = selected === "All"
+    ? currentGames.slice()
+    : currentGames.filter(function(g) { return (g.confidence || "Low") === selected; });
+
+  renderCards(filteredGames);
+  renderTable(filteredGames);
+}
+
+function renderCards(games) {
+  document.getElementById("gamesCount").textContent = games.length;
+
+  var bestSide = "—";
+  var bestTotal = "—";
+  var bestProp = "—";
+  var bestPropSub = "Shown only when a live prop qualifies";
+  var bestSideScore = -Infinity;
+  var bestTotalScore = -Infinity;
+
+  for (var i = 0; i < games.length; i++) {
+    var g = games[i];
+
+    if (g.moneylineConfidence) {
+      var awaySide = Number(g.moneylineConfidence.away || 0);
+      var homeSide = Number(g.moneylineConfidence.home || 0);
+
+      if (awaySide > bestSideScore) {
+        bestSideScore = awaySide;
+        bestSide = g.away + " ML";
+      }
+      if (homeSide > bestSideScore) {
+        bestSideScore = homeSide;
+        bestSide = g.home + " ML";
+      }
+    }
+
+    if (g.totalConfidence && g.total && g.total !== "N/A") {
+      var overScore = Number(g.totalConfidence.over || 0);
+      var underScore = Number(g.totalConfidence.under || 0);
+      var totalLine = extractTotalLine(g.total);
+
+      if (overScore > bestTotalScore) {
+        bestTotalScore = overScore;
+        bestTotal = "Over " + totalLine;
+      }
+      if (underScore > bestTotalScore) {
+        bestTotalScore = underScore;
+        bestTotal = "Under " + totalLine;
+      }
+    }
+
+    if (g.topPropOverall && g.topPropOverall.player && bestProp === "—") {
+      bestProp = g.topPropOverall.player + " " + (g.topPropOverall.market || "");
+      bestPropSub = g.topPropOverallReason || "Top optional supported prop";
+    }
+  }
+
+  document.getElementById("bestSide").textContent = bestSide;
+  document.getElementById("bestTotal").textContent = bestTotal;
+  document.getElementById("bestProp").textContent = bestProp;
+  document.getElementById("bestPropSub").textContent = bestPropSub;
+}
+
+function renderDebugPanel(game) {
+  if (!game.debug) {
+    return '<div class="notes"><strong>Debug Diagnostics:</strong> No debug block returned by the backend.</div>';
+  }
+
+  var availability = game.debug.dataAvailability || {};
+  var interpretation = game.debug.interpretation || {};
+  var rawScores = game.debug.rawScores || {};
+  var rawInputs = game.debug.rawInputs || {};
+
+  return (
+    '<div class="notes"><strong>Debug Diagnostics</strong><br>This section tells you whether 0.00 drivers are coming from missing data or truly neutral grading.</div>' +
+    '<div class="debug-grid">' +
+      '<div class="box">' +
+        '<div class="k">Data Availability</div>' +
+        '<div class="debug-pre">' + escapeHtml(JSON.stringify(availability, null, 2)) + '</div>' +
+      '</div>' +
+      '<div class="box">' +
+        '<div class="k">Zero Reasons</div>' +
+        '<div class="debug-pre">' + escapeHtml(JSON.stringify({
+          startingPitcherZeroReason: interpretation.startingPitcherZeroReason || null,
+          bullpenZeroReason: interpretation.bullpenZeroReason || null,
+          offenseZeroReason: interpretation.offenseZeroReason || null,
+          lineupZeroReason: interpretation.lineupZeroReason || null
+        }, null, 2)) + '</div>' +
+      '</div>' +
+      '<div class="box">' +
+        '<div class="k">Raw Scores</div>' +
+        '<div class="debug-pre">' + escapeHtml(JSON.stringify(rawScores, null, 2)) + '</div>' +
+      '</div>' +
+      '<div class="box">' +
+        '<div class="k">Raw Inputs Snapshot</div>' +
+        '<div class="debug-pre">' + escapeHtml(JSON.stringify(rawInputs, null, 2)) + '</div>' +
+      '</div>' +
+    '</div>'
+  );
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function renderDetail(game) {
+  if (!game) {
+    document.getElementById("detailPanel").innerHTML =
+      '<h2>No live game selected</h2>' +
+      '<div class="detail-sub">When the backend returns games, click a row to inspect the reasoning.</div>' +
+      '<div class="notes">Confidence drivers, risk warnings, and prop detail will appear here.</div>';
+    return;
+  }
+
+  var reasonsHtml = '<div class="notes">No reasoning returned yet from the backend.</div>';
+  if (game.reasons && game.reasons.length) {
+    reasonsHtml =
+      '<div class="notes"><strong>Why this bet:</strong><ul class="reason-list">' +
+      game.reasons.map(function(r) { return '<li>' + r + '</li>'; }).join('') +
+      '</ul></div>';
+  }
+
+  var propHtml =
+    '<div class="notes"><strong>Top Optional Prop:</strong> ' +
+    (game.propStatus || 'No supported prop returned for this game.') +
+    '</div>';
+
+  if (game.topPropOverall && game.topPropOverall.player) {
+    var propReasons = game.topPropOverall.reasons && game.topPropOverall.reasons.length
+      ? '<ul class="reason-list">' + game.topPropOverall.reasons.map(function(r) { return '<li>' + r + '</li>'; }).join('') + '</ul>'
+      : '';
+
+    propHtml =
+      '<div class="notes">' +
+      '<strong>Top Optional Prop:</strong> ' + game.topPropOverall.player + ' — ' + (game.topPropOverall.market || '—') +
+      '<br><strong>Price:</strong> ' + formatOdds(game.topPropOverall.price) +
+      '<br><strong>Why it graded best among props:</strong> ' + (game.topPropOverallReason || 'No explanation returned.') +
+      '<br><strong>Model %:</strong> ' + (game.topPropOverall.modelProb != null ? game.topPropOverall.modelProb + '%' : '—') +
+      propReasons +
+      '</div>';
+  }
+
+  var spVal = factorValue(game, "componentScores.side.startingPitcher", null);
+  var bpVal = factorValue(game, "componentScores.side.bullpen", null);
+  var luVal = factorValue(game, "componentScores.side.lineup", null);
+  var offVal = factorValue(game, "componentScores.side.offenseVsHand", null);
+  var parkVal = factorValue(game, "componentScores.total.parkFactor", null);
+
+  var factorGrid =
+    '<div class="factor-grid">' +
+      '<div class="box">' +
+        '<div class="k">Starting Pitcher Driver</div>' +
+        '<div class="v">' + formatDriverValue(spVal) + '</div>' +
+        '<div class="small">' + driverDirectionText(spVal, "Home starter edge", "Away starter edge") + '</div>' +
+        '<div class="small">' + driverExplanation("componentScores.side.startingPitcher", game) + '</div>' +
+      '</div>' +
+
+      '<div class="box">' +
+        '<div class="k">Bullpen Driver</div>' +
+        '<div class="v">' + formatDriverValue(bpVal) + '</div>' +
+        '<div class="small">' + driverDirectionText(bpVal, "Home bullpen edge", "Away bullpen edge") + '</div>' +
+        '<div class="small">' + driverExplanation("componentScores.side.bullpen", game) + '</div>' +
+      '</div>' +
+
+      '<div class="box">' +
+        '<div class="k">Lineup Driver</div>' +
+        '<div class="v">' + formatDriverValue(luVal) + '</div>' +
+        '<div class="small">' + driverDirectionText(luVal, "Home lineup support", "Away lineup support") + '</div>' +
+        '<div class="small">' + driverExplanation("componentScores.side.lineup", game) + '</div>' +
+      '</div>' +
+
+      '<div class="box">' +
+        '<div class="k">Offense Driver</div>' +
+        '<div class="v">' + formatDriverValue(offVal) + '</div>' +
+        '<div class="small">' + driverDirectionText(offVal, "Home offense edge", "Away offense edge") + '</div>' +
+        '<div class="small">' + driverExplanation("componentScores.side.offenseVsHand", game) + '</div>' +
+      '</div>' +
+
+      '<div class="box">' +
+        '<div class="k">Park Driver</div>' +
+        '<div class="v">' + formatDriverValue(parkVal) + '</div>' +
+        '<div class="small">' + driverDirectionText(parkVal, "Over-friendly environment", "Under-friendly environment") + '</div>' +
+        '<div class="small">' + driverExplanation("componentScores.total.parkFactor", game) + '</div>' +
+      '</div>' +
+
+      '<div class="box">' +
+        '<div class="k">Probable Pitchers</div>' +
+        '<div class="v">' + factorValue(game, "probablePitchers.away", "TBD") + ' vs ' + factorValue(game, "probablePitchers.home", "TBD") + '</div>' +
+        '<div class="small">Used by the starting pitcher driver.</div>' +
+      '</div>' +
+    '</div>';
+
+  var riskWarnings = '<div class="notes"><strong>Risk Warnings:</strong> None returned.</div>';
+  if (game.riskWarnings && game.riskWarnings.length) {
+    riskWarnings =
+      '<div class="notes"><strong>Risk Warnings:</strong><ul class="reason-list">' +
+      game.riskWarnings.map(function(r) { return '<li>' + r + '</li>'; }).join('') +
+      '</ul></div>';
+  }
+
+  var debugHtml = "";
+
+  document.getElementById("detailPanel").innerHTML =
+    '<h2>' + (game.away || "Away") + ' @ ' + (game.home || "Home") + '</h2>' +
+    '<div class="detail-sub">' + (game.time || "—") + '</div>' +
+    '<div class="detail-grid">' +
+      '<div class="detail-col">' +
+        '<div class="box"><div class="k">Best Bet</div><div class="v inline"><span>' + (game.bestBet || "—") + '</span><span class="' + pillClass(game.confidence || "Low") + '">' + (game.confidence || "Low") + '</span></div></div>' +
+        '<div class="box"><div class="k">Moneyline</div><div class="v inline"><span>' + (game.moneyline || "N/A") + '</span><span class="' + pillClass(game.confidence || "Low") + '">' + shortSideConf(game) + '</span></div></div>' +
+        '<div class="box"><div class="k">Run Line</div><div class="v inline"><span>' + (game.runLine || "N/A") + '</span><span class="' + pillClass(game.confidence || "Low") + '">' + shortRunLineConf(game) + '</span></div></div>' +
+      '</div>' +
+      '<div class="detail-col">' +
+        '<div class="box"><div class="k">Total</div><div class="v inline"><span>' + (game.total || "N/A") + '</span><span class="' + pillClass(game.confidence || "Low") + '">' + shortTotalConf(game) + '</span></div></div>' +
+        '<div class="box"><div class="k">Fair Prices</div><div class="v">Away ' + (game.fairMlAway || "—") + ' / Home ' + (game.fairMlHome || "—") + '<br>Fair Total ' + (game.fairTotal || "—") + '</div></div>' +
+        '<div class="box"><div class="k">Best Bet Price</div><div class="v">' + formatOdds(game.bestBetOdds) + '</div></div>' +
+      '</div>' +
+      '<div class="detail-col">' + propHtml + '</div>' +
+    '</div>' +
+    factorGrid +
+    '<div style="height:12px"></div>' +
+    reasonsHtml +
+    '<div style="height:12px"></div>' +
+    riskWarnings +
+    '<div style="height:12px"></div>' +
+    debugHtml;
+}
+
+function renderTable(games) {
+  var tbody = document.getElementById("gamesTable");
+  tbody.innerHTML = "";
+
+  if (!games.length) {
+    tbody.innerHTML = '<tr><td colspan="9" class="empty-row">No upcoming live data available for the selected confidence tier.</td></tr>';
+    renderDetail(null);
+    return;
+  }
+
+  for (var i = 0; i < games.length; i++) {
+    var game = games[i];
+    var whyShort = game.reasons && game.reasons.length ? game.reasons.slice(0, 2).join(" • ") : "No reasoning returned";
+    var tr = document.createElement("tr");
+
+    tr.innerHTML =
+      "<td>" + (game.time || "—") + "</td>" +
+      "<td>" + (game.away || "Away") + " @ " + (game.home || "Home") + "</td>" +
+      "<td>" + (game.moneyline || "N/A") + "</td>" +
+      "<td>" + (game.total || "N/A") + "</td>" +
+      "<td>" + (game.runLine || "N/A") + "</td>" +
+      "<td>" + (game.bestBet || "—") + " <span class='muted'>(" + formatOdds(game.bestBetOdds) + ")</span></td>" +
+      "<td>" + (game.bestBetType || "—") + "</td>" +
+      "<td><span class='" + pillClass(game.confidence || "Low") + "'>" + (game.confidence || "Low") + "</span></td>" +
+      "<td>" + whyShort + "</td>";
+
+    (function(g) {
+      tr.addEventListener("click", function() { renderDetail(g); });
+    })(game);
+
+    tbody.appendChild(tr);
+  }
+
+  renderDetail(games[0]);
+}
+
+function normalizeLiveData(data) {
+  if (!data || !Array.isArray(data.games)) return [];
+
+  return data.games.map(function(game) {
+    var topPropOverall = null;
+    if (game.topPropOverall && game.topPropOverall.player) {
+      topPropOverall = {
+        player: game.topPropOverall.player,
+        market: game.topPropOverall.market || "",
+        price: game.topPropOverall.price != null ? game.topPropOverall.price : null,
+        modelProb: game.topPropOverall.modelProb,
+        reasons: Array.isArray(game.topPropOverall.reasons) ? game.topPropOverall.reasons : []
+      };
+    }
+
+    return {
+      id: game.id || "",
+      eventId: game.eventId || "",
+      rawCommenceTime: game.rawCommenceTime || "",
+      time: game.time || "—",
+      away: game.away || "Away",
+      home: game.home || "Home",
+      probablePitchers: game.probablePitchers || null,
+      moneyline: game.moneyline || "N/A",
+      runLine: game.runLine || "N/A",
+      total: game.total || "N/A",
+      bestBet: game.bestBet || "—",
+      bestBetType: game.bestBetType || "—",
+      bestBetOdds: game.bestBetOdds != null ? game.bestBetOdds : null,
+      confidence: game.confidence || "Low",
+      confidenceScore: game.confidenceScore != null ? game.confidenceScore : null,
+      reasons: Array.isArray(game.reasons) ? game.reasons : [],
+      topPropOverall: topPropOverall,
+      topPropOverallReason: game.topPropOverallReason || "",
+      propStatus: game.propStatus || "No supported prop returned for this game.",
+      moneylineConfidence: game.moneylineConfidence || null,
+      totalConfidence: game.totalConfidence || null,
+      runLineConfidence: game.runLineConfidence || null,
+      fairMlAway: game.fairMlAway || null,
+      fairMlHome: game.fairMlHome || null,
+      fairTotal: game.fairTotal || null,
+      awayEdgePct: game.awayEdgePct != null ? game.awayEdgePct : null,
+      homeEdgePct: game.homeEdgePct != null ? game.homeEdgePct : null,
+      overEdgePct: game.overEdgePct != null ? game.overEdgePct : null,
+      underEdgePct: game.underEdgePct != null ? game.underEdgePct : null,
+      componentScores: game.componentScores || null,
+      riskWarnings: Array.isArray(game.riskWarnings) ? game.riskWarnings : [],
+      lineupMode: game.lineupMode || "",
+      lineupSource: game.lineupSource || "",
+      debug: game.debug || null
+    };
+  });
+}
+
+function loadDashboard() {
+  fetch("/api/dashboard", { cache: "no-store" })
+    .then(function(response) {
+      return response.text().then(function(text) {
+        if (!response.ok) throw new Error("API returned " + response.status + ": " + text);
+        try {
+          return JSON.parse(text);
+        } catch (e) {
+          throw new Error("API did not return valid JSON: " + text);
+        }
+      });
+    })
+    .then(function(data) {
+      currentGames = normalizeLiveData(data);
+      var archivedCount = archiveHighConfidencePicks(currentGames);
+
+      if (currentGames.length) {
+        var suffix = archivedCount ? " Auto-archived " + archivedCount + " high-confidence pick" + (archivedCount === 1 ? "" : "s") + "." : "";
+        setStatus("Live data loaded successfully." + suffix);
+      } else {
+        setStatus("Live data responded, but no upcoming usable games were returned.");
+      }
+
+      applyConfidenceFilter();
+    })
+    .catch(function(error) {
+      currentGames = [];
+      filteredGames = [];
+      setStatus("Live data unavailable. No picks shown. Check /api/dashboard. " + error.message);
+      renderCards([]);
+      renderTable([]);
+      console.error(error);
+    });
+}
+
+document.getElementById("confidenceFilter").addEventListener("change", applyConfidenceFilter);
+document.getElementById("openTrackerBtn").addEventListener("click", function() {
+  window.location.href = "tracker.html";
+});
+
+loadDashboard();
+</script>
+</body>
+</html>
