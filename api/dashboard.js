@@ -897,7 +897,6 @@ function generateF5Candidates(context) {
       reasons: ["Away F5 run line uses starter-weighted side strength."]
     });
   }
-
   if (rl.homePoint != null && rl.homePrice != null) {
     const prob = clamp(homeProb + 0.025, 0.01, 0.99);
     out.push({
@@ -1510,7 +1509,6 @@ function addMissedHighReasons(candidates) {
     });
   });
 }
-
 function rankCandidates(candidates, context) {
   const baseScored = safeArray(candidates).map(c => scoreCandidateBase(c, context));
   const adjusted = applyConflictAdjustments(baseScored, context);
