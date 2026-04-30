@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bobby's MLB Data Trends Dashboard</title>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <style>
+    :root{
+      --bg:#14061f;--bg2:#071a26;--panel:#1b1030;--panel2:#10273a;--text:#f8f7ff;--muted:#c8b9dc;
+      --good:#44f0a1;--warn:#ffd166;--bad:#ff6b8a;--cyan:#39d7ff;--pink:#ff4fd8;--radius:18px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;font-family:Inter,Arial,sans-serif;color:var(--text);min-height:100vh;
+      background:
+        radial-gradient(circle at top left,rgba(255,79,216,.18),transparent 24%),
+        radial-gradient(circle at top right,rgba(57,215,255,.14),transparent 24%),
+        linear-gradient(180deg,var(--bg),var(--bg2));
+    }
+    .wrap{max-width:1680px;margin:0 auto;padding:20px}
+    h1{margin:0 0 8px;font-size:34px;letter-spacing:-.02em}
+    h2{margin:0;font-size:18px}
+    .topbar{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;flex-wrap:wrap}
+    .toolbar,.filters{display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-top:12px}
+    .btn,.input,select{
+      background:#10273a;color:#f8f7ff;border:1px solid rgba(255,79,216,.35);border-radius:12px;padding:10px 12px;
+      font-weight:800;min-height:40px;
+    }
+    .btn{cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}
+    .btn:hover{box-shadow:0 0 0 1px rgba(68,240,161,.25) inset}
+    .input{width:132px}
+    .filter{display:flex;flex-direction:column;gap:6px}
+    .filter label{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:#ffd8f6}
+    .status,.card,.panel,.callout{
+      border-radius:var(--radius);background:linear-gradient(180deg,rgba(27,16,48,.98),rgba(16,39,58,.96));
+      border:1px solid rgba(255,79,216,.35);
+    }
+    .status{margin-top:12px;padding:12px 14px;color:var(--muted);line-height:1.45}
+    .cards{display:grid;grid-template-columns:repeat(7,minmax(140px,1fr));gap:14px;margin:18px 0}
+    .card{padding:16px;min-height:112px}
+    .label{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:#ffd8f6}
+    .value{font-size:28px;font-weight:900;margin-top:10px;line-height:1.1}
+    .small,.muted{font-size:13px;color:var(--muted);line-height:1.35}
+    .small{margin-top:8px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}
+    .grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-top:14px}
+    .panel{overflow:hidden}
+    .panel-header{padding:16px 18px;border-bottom:1px solid rgba(57,215,255,.28);display:flex;justify-content:space-between;align-items:center;gap:10px}
+    .panel-body{padding:16px 18px}
+    .callout{padding:16px 18px;margin-top:14px}
+    .callout ul{margin:10px 0 0;padding-left:20px;color:var(--muted);line-height:1.5}
+    .table-wrap{overflow-x:auto}
+    table{width:100%;border-collapse:collapse;min-width:760px}
+    th,td{padding:11px 10px;border-bottom:1px solid rgba(255,255,255,.07);text-align:left;font-size:13px;vertical-align:top}
+    th{color:#ffd9f5;font-size:11px;text-transform:uppercase;letter-spacing:.08em;background:rgba(255,79,216,.05)}
+    .pill{display:inline-block;padding:5px 9px;border-radius:999px;font-size:12px;font-weight:900;white-space:nowrap}
+    .good{background:rgba(68,240,161,.14);color:var(--good)}
+    .warn{background:rgba(255,209,102,.14);color:var(--warn)}
+    .bad{background:rgba(255,107,138,.14);color:var(--bad)}
+    .neutral{background:rgba(200,185,220,.14);color:var(--muted)}
+    .bar-row{display:grid;grid-template-columns:minmax(150px,1.4fr) minmax(180px,2fr) 82px 82px;gap:10px;align-items:center;margin:10px 0}
+    .bar-track{height:12px;background:rgba(255,255,255,.08);border-radius:999px;overflow:hidden}
+    .bar{height:100%;border-radius:999px;background:linear-gradient(90deg,var(--cyan),var(--pink));min-width:2px}
+    .bar.negative{background:linear-gradient(90deg,var(--bad),var(--warn))}
+    .section-title{font-weight:900}
+    .empty{color:var(--muted);padding:14px 0}
+    .footnote{font-size:12px;color:var(--muted);line-height:1.4;margin-top:12px}
+    @media (max-width:1300px){.cards{grid-template-columns:repeat(4,minmax(140px,1fr))}.grid-3{grid-template-columns:1fr}.grid{grid-template-columns:1fr}}
+    @media (max-width:760px){.wrap{padding:12px}h1{font-size:26px}.cards{grid-template-columns:1fr 1fr}.bar-row{grid-template-columns:1fr}.input{width:110px}}
+    @media (max-width:520px){.cards{grid-template-columns:1fr}.btn,.input,select{width:100%}.filter{width:100%}}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div>
+      <h1>Bobby's MLB Data Trends Dashboard</h1>
+      <div class="muted">Performance interpretation from the shared archive table. Use this to see which bet types, views, odds ranges, and market scripts are actually working.</div>
+      <div class="toolbar">
+        <a class="btn" href="index.html">Back to Dashboard</a>
+        <a class="btn" href="tracker.html">Open Pick Tracker</a>
+        <button class="btn" id="refreshBtn">Refresh Shared Archive</button>
+        <button class="btn" id="importBtn">Import Tracker Excel</button>
+        <input type="file" id="importInput" accept=".xlsx,.xls" style="display:none;" />
+      </div>
+    </div>
+    <div class="filters">
+      <div class="filter">
+        <label for="unitSize">Unit Size ($)</label>
+        <input id="unitSize" class="input" type="number" min="1" step="1" value="10" />
+      </div>
+      <div class="filter">
+        <label for="minSample">Min Sample</label>
+        <input id="minSample" class="input" type="number" min="1" step="1" value="3" />
+      </div>
+      <div class="filter">
+        <label for="gradeFilter">Rows Included</label>
+        <select id="gradeFilter">
+          <option value="all" selected>All Rows</option>
+          <option value="graded">Graded Only</option>
+          <option value="settled">Wins/Losses Only</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="status" id="statusBox">Loading shared archive...</div>
+
+  <div class="cards">
+    <div class="card"><div class="label">Total Picks</div><div class="value" id="cardTotal">0</div><div class="small">Archive rows loaded</div></div>
+    <div class="card"><div class="label">Graded Picks</div><div class="value" id="cardGraded">0</div><div class="small">Win / Loss / Tie</div></div>
+    <div class="card"><div class="label">Wins-Losses-Ties</div><div class="value" id="cardWlt">—</div><div class="small">Direct record count</div></div>
+    <div class="card"><div class="label">Win Rate</div><div class="value" id="cardWinRate">—</div><div class="small">Excludes pushes/ties</div></div>
+    <div class="card"><div class="label">Net Units</div><div class="value" id="cardUnits">—</div><div class="small">1 unit risked per settled bet</div></div>
+    <div class="card"><div class="label">ROI %</div><div class="value" id="cardRoi">—</div><div class="small">Net units / risked units</div></div>
+    <div class="card"><div class="label">Pending / Void</div><div class="value" id="cardPending">—</div><div class="small">Rows not counted in ROI</div></div>
+  </div>
+
+  <div class="callout">
+    <div class="section-title">Model Readout</div>
+    <ul id="insightList"><li>Loading interpretation...</li></ul>
+  </div>
+
+  <div class="grid">
+    <div class="panel">
+      <div class="panel-header"><h2>Performance by Dashboard View</h2><span class="muted">Full vs F5 vs props</span></div>
+      <div class="panel-body" id="viewBars"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-header"><h2>Performance by Bet Type</h2><span class="muted">Market family</span></div>
+      <div class="panel-body" id="typeBars"></div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="panel">
+      <div class="panel-header"><h2>Profit by Odds Range</h2><span class="muted">Price discipline check</span></div>
+      <div class="panel-body" id="oddsBars"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-header"><h2>Over / Under / Side Split</h2><span class="muted">Market script check</span></div>
+      <div class="panel-body" id="sideBars"></div>
+    </div>
+  </div>
+
+  <div class="grid-3">
+    <div class="panel">
+      <div class="panel-header"><h2>Best Segments</h2><span class="muted">Minimum sample enforced</span></div>
+      <div class="panel-body table-wrap"><table><thead><tr><th>Segment</th><th>Record</th><th>Win %</th><th>Units</th><th>ROI</th></tr></thead><tbody id="bestSegments"></tbody></table></div>
+    </div>
+    <div class="panel">
+      <div class="panel-header"><h2>Weakest Segments</h2><span class="muted">Where to throttle</span></div>
+      <div class="panel-body table-wrap"><table><thead><tr><th>Segment</th><th>Record</th><th>Win %</th><th>Units</th><th>ROI</th></tr></thead><tbody id="weakSegments"></tbody></table></div>
+    </div>
+    <div class="panel">
+      <div class="panel-header"><h2>Same-Game Clustering</h2><span class="muted">Cluster risk by matchup</span></div>
+      <div class="panel-body table-wrap"><table><thead><tr><th>Matchup</th><th>Picks</th><th>Record</th><th>Units</th></tr></thead><tbody id="clusterTable"></tbody></table></div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="panel">
+      <div class="panel-header"><h2>Detailed Segment Table</h2><span class="muted">Sorts by net units</span></div>
+      <div class="panel-body table-wrap"><table><thead><tr><th>Group</th><th>Segment</th><th>Picks</th><th>Graded</th><th>W-L-T</th><th>Win %</th><th>Net Units</th><th>ROI</th></tr></thead><tbody id="segmentTable"></tbody></table></div>
+    </div>
+    <div class="panel">
+      <div class="panel-header"><h2>Recent Results by Date</h2><span class="muted">First pitch date</span></div>
+      <div class="panel-body" id="dateBars"></div>
+    </div>
+  </div>
+
+  <div class="footnote">
+    Trend logic is descriptive, not predictive. Small samples can look extreme. Use this page to identify patterns that deserve model changes, then validate with more archive rows.
+  </div>
+</div>
+
+<script>
+var STORAGE_KEY = "bobby_mlb_tracker_archive_v2";
+var UNIT_SIZE_KEY = "bobby_mlb_unit_size_v1";
+var rawRows = [];
+var activeRows = [];
+
+function hasValue(v){ return v !== null && v !== undefined && v !== ""; }
+function num(v){ var n = Number(v); return isFinite(n) ? n : null; }
+function money(v){ var n = Number(v); return isFinite(n) ? "$" + n.toFixed(2) : "—"; }
+function units(v){ var n = Number(v); return isFinite(n) ? n.toFixed(2) : "—"; }
+function pct(v){ var n = Number(v); return isFinite(n) ? n.toFixed(1) + "%" : "—"; }
+function escapeHtml(value){ return String(value == null ? "" : value).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\"/g,"&quot;").replace(/'/g,"&#039;"); }
+function normText(v){ return String(v || "").trim(); }
+function canonicalGrade(g){
+  var s = String(g || "").trim().toLowerCase();
+  if (s === "win" || s === "won") return "Win";
+  if (s === "loss" || s === "lost") return "Loss";
+  if (s === "push" || s === "tie" || s === "void") return "Tie";
+  return "";
+}
+function normalizeView(v){
+  var s = String(v || "").trim();
+  if (s === "hitter_props") return "Hitter Props";
+  if (s === "pitcher_props") return "Pitcher Props";
+  if (s === "f5") return "F5";
+  if (s === "full") return "Full Game";
+  if (s === "props") return "Props";
+  return s || "Unknown";
+}
+function normalizeRow(r){
+  var out = {
+    archiveId: r.archiveId || r.archive_id || "",
+    archivedAt: r.archivedAt || r.archived_at || "",
+    source: r.source || "Archive",
+    eventId: r.eventId || r.event_id || "",
+    rawCommenceTime: r.rawCommenceTime || r.raw_commence_time || "",
+    away: r.away || "",
+    home: r.home || "",
+    matchup: r.matchup || ((r.away || "") + " @ " + (r.home || "")).trim(),
+    bestBet: r.bestBet || r.best_bet || "",
+    bestBetType: r.bestBetType || r.best_bet_type || "",
+    viewMode: r.viewMode || r.view_mode || "",
+    confidence: r.confidence || "",
+    score: num(r.score),
+    oddsPrice: num(r.oddsPrice != null ? r.oddsPrice : r.odds_price),
+    resultStatus: r.resultStatus || r.result_status || "",
+    resultDetail: r.resultDetail || r.result_detail || "",
+    grade: canonicalGrade(r.grade),
+    netUnits: num(r.netUnits != null ? r.netUnits : r.net_units),
+    profitDollars: num(r.profitDollars != null ? r.profitDollars : r.profit_dollars)
+  };
+  if (!out.matchup || out.matchup === "@") out.matchup = [out.away, out.home].filter(Boolean).join(" @ ");
+  if (out.grade && out.netUnits == null) out.netUnits = inferNetUnits(out);
+  return out;
+}
+function inferNetUnits(row){
+  if (row.grade === "Loss") return -1;
+  if (row.grade === "Tie") return 0;
+  if (row.grade === "Win") {
+    var p = Number(row.oddsPrice);
+    if (!isFinite(p)) return 1;
+    return p > 0 ? p / 100 : 100 / Math.abs(p);
+  }
+  return null;
+}
+function getUnitSize(){ var n = Number(document.getElementById("unitSize").value || localStorage.getItem(UNIT_SIZE_KEY) || 10); return isFinite(n) && n > 0 ? n : 10; }
+function setStatus(text){ document.getElementById("statusBox").textContent = text; }
+function dateKey(row){
+  if (!row.rawCommenceTime) return "Unknown Date";
+  var d = new Date(row.rawCommenceTime);
+  if (isNaN(d.getTime())) return "Unknown Date";
+  return d.toLocaleDateString("en-US", { timeZone:"America/New_York", month:"numeric", day:"numeric", year:"2-digit" });
+}
+function isGraded(row){ return row.grade === "Win" || row.grade === "Loss" || row.grade === "Tie"; }
+function isSettled(row){ return row.grade === "Win" || row.grade === "Loss"; }
+function filterRows(rows){
+  var f = document.getElementById("gradeFilter").value;
+  if (f === "graded") return rows.filter(isGraded);
+  if (f === "settled") return rows.filter(isSettled);
+  return rows.slice();
+}
+function oddsBucket(row){
+  var p = Number(row.oddsPrice);
+  if (!isFinite(p)) return "No Odds";
+  if (p >= 150) return "+150 or longer";
+  if (p >= 101) return "+101 to +149";
+  if (p >= -120) return "-120 to +100";
+  if (p >= -160) return "-121 to -160";
+  return "-161 or shorter";
+}
+function betDirection(row){
+  var b = String(row.bestBet || "");
+  if (/\bOver\b/i.test(b)) return "Over";
+  if (/\bUnder\b/i.test(b)) return "Under";
+  if (/ML|Run Line|\s[+-]\d+(\.\d+)?/i.test(b)) return "Team Side";
+  return "Other";
+}
+function propCategory(row){
+  var b = String(row.bestBet || "").toLowerCase();
+  if (String(row.bestBetType || "") !== "Prop") return row.bestBetType || "Unknown";
+  if (b.indexOf("pitcher strikeouts") >= 0) return "Pitcher Strikeouts";
+  if (b.indexOf("pitcher outs") >= 0) return "Pitcher Outs";
+  if (b.indexOf("pitcher earned runs") >= 0) return "Pitcher Earned Runs";
+  if (b.indexOf("total bases") >= 0) return "Hitter Total Bases";
+  if (b.indexOf("hits + runs + rbis") >= 0 || b.indexOf("hits runs rbis") >= 0) return "Hitter H+R+RBI";
+  if (b.indexOf("home runs") >= 0) return "Hitter Home Runs";
+  if (b.indexOf("rbis") >= 0) return "Hitter RBIs";
+  if (b.indexOf("runs scored") >= 0) return "Hitter Runs";
+  if (b.indexOf("stolen bases") >= 0) return "Hitter Stolen Bases";
+  if (b.indexOf("walks") >= 0) return "Hitter Walks";
+  if (b.indexOf("singles") >= 0) return "Hitter Singles";
+  if (b.indexOf("doubles") >= 0) return "Hitter Doubles";
+  if (b.indexOf("triples") >= 0) return "Hitter Triples";
+  if (b.indexOf("hits") >= 0) return "Hitter Hits";
+  return "Other Prop";
+}
+function scoreBucket(row){
+  var s = Number(row.score);
+  if (!isFinite(s)) return "No Score";
+  if (s >= 90) return "90+";
+  if (s >= 80) return "80-89";
+  if (s >= 70) return "70-79";
+  if (s >= 60) return "60-69";
+  return "Below 60";
+}
+function calc(rows){
+  var picks = rows.length;
+  var graded = rows.filter(isGraded);
+  var wins = rows.filter(function(r){ return r.grade === "Win"; }).length;
+  var losses = rows.filter(function(r){ return r.grade === "Loss"; }).length;
+  var ties = rows.filter(function(r){ return r.grade === "Tie"; }).length;
+  var settled = wins + losses;
+  var net = graded.reduce(function(a,r){ var n = Number(r.netUnits); return a + (isFinite(n) ? n : 0); },0);
+  var winRate = settled ? wins / settled * 100 : null;
+  var roi = settled ? net / settled * 100 : null;
+  return { picks:picks, graded:graded.length, wins:wins, losses:losses, ties:ties, settled:settled, pending:picks-graded.length, net:net, winRate:winRate, roi:roi };
+}
+function groupBy(rows, fn){
+  var map = {};
+  rows.forEach(function(r){ var key = fn(r) || "Unknown"; if (!map[key]) map[key] = []; map[key].push(r); });
+  return Object.keys(map).map(function(k){ return { key:k, rows:map[k], stats:calc(map[k]) }; });
+}
+function recordText(s){ return s.wins + "-" + s.losses + "-" + s.ties; }
+function trendClass(s){ if (s.settled < 1) return "neutral"; if (s.net > 0) return "good"; if (s.net < 0) return "bad"; return "warn"; }
+function renderBars(elId, groups, metric){
+  var el = document.getElementById(elId);
+  var eligible = groups.slice().sort(function(a,b){ return Math.abs(b.stats[metric] || 0) - Math.abs(a.stats[metric] || 0); });
+  if (!eligible.length) { el.innerHTML = '<div class="empty">No data yet.</div>'; return; }
+  var maxAbs = Math.max.apply(null, eligible.map(function(g){ return Math.abs(Number(g.stats[metric] || 0)); }).concat([1]));
+  el.innerHTML = eligible.map(function(g){
+    var s = g.stats;
+    var value = Number(s[metric] || 0);
+    var width = Math.max(2, Math.min(100, Math.abs(value) / maxAbs * 100));
+    var label = metric === "net" ? units(value) + "u" : pct(value);
+    return '<div class="bar-row">' +
+      '<div><strong>' + escapeHtml(g.key) + '</strong><div class="small">' + s.graded + ' graded · ' + recordText(s) + '</div></div>' +
+      '<div class="bar-track"><div class="bar ' + (value < 0 ? 'negative' : '') + '" style="width:' + width + '%"></div></div>' +
+      '<div><span class="pill ' + trendClass(s) + '">' + label + '</span></div>' +
+      '<div class="muted">ROI ' + pct(s.roi) + '</div>' +
+      '</div>';
+  }).join("");
+}
+function renderSegmentRows(elId, groups){
+  var body = document.getElementById(elId);
+  if (!groups.length) { body.innerHTML = '<tr><td colspan="5" class="muted">No eligible segments yet.</td></tr>'; return; }
+  body.innerHTML = groups.map(function(g){ var s = g.stats; return '<tr><td>' + escapeHtml(g.key) + '</td><td>' + recordText(s) + '</td><td>' + pct(s.winRate) + '</td><td><span class="pill ' + trendClass(s) + '">' + units(s.net) + '</span></td><td>' + pct(s.roi) + '</td></tr>'; }).join("");
+}
+function renderAllSegments(groupsByName){
+  var rows = [];
+  Object.keys(groupsByName).forEach(function(name){
+    groupsByName[name].forEach(function(g){ rows.push({ group:name, key:g.key, stats:g.stats }); });
+  });
+  rows.sort(function(a,b){ return Number(b.stats.net || 0) - Number(a.stats.net || 0); });
+  var body = document.getElementById("segmentTable");
+  if (!rows.length) { body.innerHTML = '<tr><td colspan="8" class="muted">No segment data yet.</td></tr>'; return; }
+  body.innerHTML = rows.map(function(r){ var s = r.stats; return '<tr><td>' + escapeHtml(r.group) + '</td><td>' + escapeHtml(r.key) + '</td><td>' + s.picks + '</td><td>' + s.graded + '</td><td>' + recordText(s) + '</td><td>' + pct(s.winRate) + '</td><td><span class="pill ' + trendClass(s) + '">' + units(s.net) + '</span></td><td>' + pct(s.roi) + '</td></tr>'; }).join("");
+}
+function renderClusters(rows){
+  var clusters = groupBy(rows.filter(isGraded), function(r){ return r.matchup || "Unknown"; })
+    .filter(function(g){ return g.rows.length >= 2; })
+    .sort(function(a,b){ return Math.abs(b.stats.net) - Math.abs(a.stats.net); })
+    .slice(0,8);
+  var body = document.getElementById("clusterTable");
+  if (!clusters.length) { body.innerHTML = '<tr><td colspan="4" class="muted">No clustered games yet.</td></tr>'; return; }
+  body.innerHTML = clusters.map(function(g){ var s = g.stats; return '<tr><td>' + escapeHtml(g.key) + '</td><td>' + s.picks + '</td><td>' + recordText(s) + '</td><td><span class="pill ' + trendClass(s) + '">' + units(s.net) + 'u</span></td></tr>'; }).join("");
+}
+function renderInsights(baseRows, groupsByName){
+  var all = calc(baseRows);
+  var minSample = Math.max(1, Number(document.getElementById("minSample").value || 3));
+  function eligible(groups){ return groups.filter(function(g){ return g.stats.settled >= minSample; }); }
+  var allSegs = [];
+  Object.keys(groupsByName).forEach(function(k){ eligible(groupsByName[k]).forEach(function(g){ allSegs.push({ group:k, key:g.key, stats:g.stats }); }); });
+  var best = allSegs.slice().sort(function(a,b){ return b.stats.net - a.stats.net; })[0];
+  var worst = allSegs.slice().sort(function(a,b){ return a.stats.net - b.stats.net; })[0];
+  var byView = groupBy(baseRows, function(r){ return normalizeView(r.viewMode); });
+  var f5 = byView.find(function(g){ return g.key === "F5"; });
+  var hitter = byView.find(function(g){ return g.key === "Hitter Props"; });
+  var pitcher = byView.find(function(g){ return g.key === "Pitcher Props"; });
+  var prop = groupBy(baseRows, function(r){ return r.bestBetType === "Prop" ? "Props" : "Non-Props"; }).find(function(g){ return g.key === "Props"; });
+  var clusters = groupBy(baseRows.filter(isGraded), function(r){ return r.matchup || "Unknown"; }).filter(function(g){ return g.rows.length >= 3; });
+  var clusterNet = clusters.reduce(function(a,g){ return a + g.stats.net; },0);
+  var pending = baseRows.filter(function(r){ return !isGraded(r); }).length;
+  var notes = [];
+  notes.push("Overall archive record is " + recordText(all) + " with " + pct(all.winRate) + " win rate and " + units(all.net) + " net units.");
+  if (best) notes.push("Strongest current segment: " + best.group + " → " + best.key + " at " + recordText(best.stats) + ", " + units(best.stats.net) + " units.");
+  if (worst) notes.push("Weakest current segment: " + worst.group + " → " + worst.key + " at " + recordText(worst.stats) + ", " + units(worst.stats.net) + " units. This is the first place to throttle or add stricter gates.");
+  if (f5 && f5.stats.settled >= minSample) notes.push("F5 is currently " + recordText(f5.stats) + " for " + units(f5.stats.net) + " units, so its weighting should be " + (f5.stats.net > 0 ? "preserved or tested higher" : "reduced until the model improves") + ".");
+  if (prop && prop.stats.settled >= minSample) notes.push("Props are currently " + recordText(prop.stats) + " for " + units(prop.stats.net) + " units; keep separating hitter and pitcher props because their behavior can diverge.");
+  if (hitter && pitcher && hitter.stats.settled >= minSample && pitcher.stats.settled >= minSample) notes.push("Hitter props: " + units(hitter.stats.net) + " units vs pitcher props: " + units(pitcher.stats.net) + " units. Use this split to avoid one prop class dragging the whole prop model.");
+  if (clusters.length) notes.push("Same-game clusters with 3+ picks are " + units(clusterNet) + " combined units. If this number turns negative, add a cap on picks from the same game.");
+  if (pending) notes.push(pending + " rows are pending/void/not graded and are excluded from ROI. This matters if many recent games are still in progress or postponed.");
+  document.getElementById("insightList").innerHTML = notes.map(function(n){ return "<li>" + escapeHtml(n) + "</li>"; }).join("");
+}
+function render(rows){
+  activeRows = filterRows(rows);
+  var base = calc(activeRows);
+  document.getElementById("cardTotal").textContent = activeRows.length;
+  document.getElementById("cardGraded").textContent = base.graded;
+  document.getElementById("cardWlt").textContent = recordText(base);
+  document.getElementById("cardWinRate").textContent = pct(base.winRate);
+  document.getElementById("cardUnits").textContent = units(base.net);
+  document.getElementById("cardRoi").textContent = pct(base.roi);
+  document.getElementById("cardPending").textContent = String(base.pending);
+
+  var byView = groupBy(activeRows, function(r){ return normalizeView(r.viewMode); });
+  var byType = groupBy(activeRows, function(r){ return r.bestBetType || "Unknown"; });
+  var byOdds = groupBy(activeRows, oddsBucket);
+  var bySide = groupBy(activeRows, betDirection);
+  var byDate = groupBy(activeRows, dateKey).sort(function(a,b){ return new Date(a.key) - new Date(b.key); });
+  var byProp = groupBy(activeRows.filter(function(r){ return r.bestBetType === "Prop"; }), propCategory);
+  var byScore = groupBy(activeRows, scoreBucket);
+  var minSample = Math.max(1, Number(document.getElementById("minSample").value || 3));
+  var allGroups = {
+    "Dashboard View": byView,
+    "Bet Type": byType,
+    "Odds Range": byOdds,
+    "Bet Direction": bySide,
+    "Prop Category": byProp,
+    "Score Bucket": byScore
+  };
+  function eligible(groups){ return groups.filter(function(g){ return g.stats.settled >= minSample; }); }
+  var combined = [];
+  Object.keys(allGroups).forEach(function(k){ eligible(allGroups[k]).forEach(function(g){ combined.push({ key:k + ": " + g.key, stats:g.stats }); }); });
+  var best = combined.slice().sort(function(a,b){ return b.stats.net - a.stats.net; }).slice(0,6);
+  var weak = combined.slice().sort(function(a,b){ return a.stats.net - b.stats.net; }).slice(0,6);
+
+  renderBars("viewBars", byView, "net");
+  renderBars("typeBars", byType, "net");
+  renderBars("oddsBars", byOdds, "net");
+  renderBars("sideBars", bySide, "net");
+  renderBars("dateBars", byDate, "net");
+  renderSegmentRows("bestSegments", best);
+  renderSegmentRows("weakSegments", weak);
+  renderAllSegments(allGroups);
+  renderClusters(activeRows);
+  renderInsights(activeRows, allGroups);
+}
+async function loadSharedArchive(){
+  setStatus("Loading shared archive from Supabase...");
+  try {
+    var res = await fetch("/api/archive-list", { cache:"no-store" });
+    var data = await res.json();
+    if (data && data.ok && Array.isArray(data.rows)) {
+      rawRows = data.rows.map(normalizeRow);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(rawRows));
+      render(rawRows);
+      setStatus("Loaded " + rawRows.length + " rows from shared archive.");
+      return;
+    }
+    throw new Error("Shared archive response was not usable.");
+  } catch(err) {
+    try {
+      var local = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+      rawRows = Array.isArray(local) ? local.map(normalizeRow) : [];
+      render(rawRows);
+      setStatus("Shared archive unavailable. Loaded " + rawRows.length + " rows from local browser storage.");
+    } catch(e) {
+      rawRows = [];
+      render(rawRows);
+      setStatus("No archive rows available yet.");
+    }
+  }
+}
+function importWorkbook(file){
+  var reader = new FileReader();
+  reader.onload = function(e){
+    var data = new Uint8Array(e.target.result);
+    var wb = XLSX.read(data, { type:"array" });
+    var rows = [];
+    wb.SheetNames.forEach(function(name){ rows = rows.concat(XLSX.utils.sheet_to_json(wb.Sheets[name], { defval:"" })); });
+    rawRows = rows.map(normalizeRow).filter(function(r){ return r.bestBet || r.matchup; });
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(rawRows));
+    render(rawRows);
+    setStatus("Imported " + rawRows.length + " rows from Excel for trend analysis.");
+  };
+  reader.readAsArrayBuffer(file);
+}
+document.getElementById("refreshBtn").addEventListener("click", loadSharedArchive);
+document.getElementById("importBtn").addEventListener("click", function(){ document.getElementById("importInput").click(); });
+document.getElementById("importInput").addEventListener("change", function(e){ var file = e.target.files && e.target.files[0]; if (file) importWorkbook(file); e.target.value = ""; });
+document.getElementById("unitSize").addEventListener("input", function(){ localStorage.setItem(UNIT_SIZE_KEY, this.value || "10"); render(rawRows); });
+document.getElementById("minSample").addEventListener("input", function(){ render(rawRows); });
+document.getElementById("gradeFilter").addEventListener("change", function(){ render(rawRows); });
+document.getElementById("unitSize").value = localStorage.getItem(UNIT_SIZE_KEY) || "10";
+loadSharedArchive();
+</script>
+</body>
+</html>
