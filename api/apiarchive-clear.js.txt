@@ -1,0 +1,73 @@
+// api/archive-clear.js
+// Clears shared Supabase archive rows. Used by tracker database-aware clear/replace workflows.
+// Requires body.confirm === "CLEAR_SHARED_ARCHIVE" to prevent accidental deletion.
+
+module.exports = async function handler(req, res) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Cache-Control", "no-store, max-age=0");
+
+  if (req.method === "OPTIONS") {
+    return res.status(204).end();
+  }
+
+  if (req.method !== "POST") {
+    return res.status(405).json({ ok: false, error: "Method not allowed. Use POST." });
+  }
+
+  try {
+    const url = process.env.SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!url || !key) {
+      return res.status(500).json({
+        ok: false,
+        error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY"
+      });
+    }
+
+    const body = req.body || {};
+
+    if (body.confirm !== "CLEAR_SHARED_ARCHIVE") {
+      return res.status(400).json({
+        ok: false,
+        error: "Missing confirmation. Send confirm: CLEAR_SHARED_ARCHIVE."
+      });
+    }
+
+    const endpoint = url.replace(/\/$/, "") + "/rest/v1/archive_picks?archive_id=not.is.null";
+
+    const response = await fetch(endpoint, {
+      method: "DELETE",
+      headers: {
+        apikey: key,
+        Authorization: "Bearer " + key,
+        Accept: "application/json",
+        Prefer: "return=representation"
+      }
+    });
+
+    const text = await response.text();
+
+    if (!response.ok) {
+      return res.status(response.status).json({ ok: false, error: text });
+    }
+
+    let rows = [];
+    try {
+      rows = text ? JSON.parse(text) : [];
+    } catch (e) {
+      rows = [];
+    }
+
+    return res.status(200).json({
+      ok: true,
+      mode: "shared_archive_clear",
+      deletedCount: Array.isArray(rows) ? rows.length : 0,
+      reason: body.reason || "manual_clear"
+    });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+};
