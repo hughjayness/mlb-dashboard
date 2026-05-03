@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bobby's MLB Betting Dashboard</title>
+  <style>
+    :root{
+      --bg:#14061f;--bg2:#071a26;--panel:#1b1030;--text:#f8f7ff;--muted:#c8b9dc;
+      --good:#44f0a1;--warn:#ffd166;--bad:#ff6b8a;--radius:18px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;font-family:Inter,Arial,sans-serif;color:var(--text);
+      background:
+        radial-gradient(circle at top left,rgba(255,79,216,.18),transparent 24%),
+        radial-gradient(circle at top right,rgba(57,215,255,.14),transparent 24%),
+        linear-gradient(180deg,var(--bg),var(--bg2));
+      min-height:100vh;
+    }
+    .wrap{max-width:1600px;margin:0 auto;padding:20px}
+    h1{margin:0 0 10px;font-size:34px}
+    .topbar,.toolbar,.controls{display:flex;gap:10px;flex-wrap:wrap;align-items:end}
+    .topbar{justify-content:space-between}
+    .btn,.control select{background:#10273a;color:#f8f7ff;border:1px solid rgba(255,79,216,.35);border-radius:12px;padding:10px 12px}
+    .btn{cursor:pointer;font-weight:800}
+    .btn:hover{box-shadow:0 0 0 1px rgba(68,240,161,.25) inset}
+    .mode-btn.active{box-shadow:0 0 0 2px rgba(68,240,161,.35) inset;border-color:rgba(68,240,161,.65)}
+    .control{display:flex;flex-direction:column;gap:6px}
+    .control label{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:#ffd8f6}
+    .status,.card,.panel{border-radius:var(--radius);background:linear-gradient(180deg,rgba(27,16,48,.98),rgba(16,39,58,.96));border:1px solid rgba(255,79,216,.35)}
+    .status{margin-top:10px;padding:12px 14px;color:var(--muted);line-height:1.45}
+    .canary{color:var(--good);font-weight:900}
+    .cards{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:14px;margin:18px 0}
+    .card{padding:16px}
+    .label{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:#ffd8f6}
+    .value{font-size:26px;font-weight:900;margin-top:10px;line-height:1.15}
+    .small{font-size:13px;color:var(--muted);margin-top:8px;line-height:1.35}
+    .panel{margin-top:16px;overflow:hidden}
+    .panel-header{padding:16px 18px;border-bottom:1px solid rgba(57,215,255,.28);font-weight:900;display:flex;justify-content:space-between;align-items:center;gap:10px}
+    .muted{color:var(--muted);font-size:13px}
+    .table-wrap{overflow-x:auto}
+    table{width:100%;border-collapse:collapse;min-width:1180px}
+    th,td{padding:13px 12px;border-bottom:1px solid rgba(255,255,255,.06);text-align:left;font-size:14px;vertical-align:top}
+    th{color:#ffd9f5;font-size:12px;text-transform:uppercase;letter-spacing:.08em;background:rgba(255,79,216,.05)}
+    tbody tr:hover{background:rgba(57,215,255,.08);cursor:pointer}
+    .empty-row{color:var(--muted);text-align:center;padding:28px 12px}
+    .pill{display:inline-block;padding:6px 10px;border-radius:999px;font-size:12px;font-weight:900;white-space:nowrap}
+    .good{background:rgba(68,240,161,.14);color:var(--good)}
+    .warn{background:rgba(255,209,102,.14);color:var(--warn)}
+    .bad{background:rgba(255,107,138,.14);color:var(--bad)}
+    .detail{padding:18px}
+    .detail h2{margin:0 0 6px;font-size:24px}
+    .detail-sub{color:var(--muted);margin-bottom:14px}
+    .detail-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:14px}
+    .box,.notes{border-radius:14px;background:linear-gradient(180deg,rgba(16,39,58,.92),rgba(36,20,63,.95));border:1px solid rgba(57,215,255,.24)}
+    .box{padding:12px}
+    .box .k{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:#ffd4f2;margin-bottom:6px}
+    .box .v{font-size:16px;font-weight:800;line-height:1.35}
+    .notes{padding:14px;color:var(--muted);line-height:1.55}
+    .reason-list{margin:8px 0 0;padding-left:18px}
+    @media (max-width:1100px){.cards{grid-template-columns:repeat(2,1fr)}.detail-grid{grid-template-columns:1fr}}
+    @media (max-width:700px){.cards{grid-template-columns:1fr}.wrap{padding:12px}h1{font-size:26px}}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div>
+      <h1>Bobby's MLB Betting Dashboard</h1>
+      <div class="toolbar" style="margin-top:10px;">
+        <button class="btn" id="openTrackerBtn">Open Pick Tracker</button>
+        <button class="btn" id="openTrendsBtn">Data Trends</button>
+        <button class="btn mode-btn active" data-view="full">Full Game</button>
+        <button class="btn mode-btn" data-view="f5">F5</button>
+        <button class="btn mode-btn" data-view="pitcher_props">Pitcher Props</button>
+        <button class="btn mode-btn" data-view="hitter_props">Hitter Props</button>
+      </div>
+    </div>
+    <div class="controls">
+      <div class="control">
+        <label for="confidenceFilter">Best Bet Confidence Filter</label>
+        <select id="confidenceFilter">
+          <option value="All" selected>All Tiers</option>
+          <option value="High">High</option>
+          <option value="Medium">Medium</option>
+          <option value="Low">Low</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="status" id="statusBox">Loading live data... <span class="canary">confidence UI fix v6 active</span></div>
+
+  <div class="cards">
+    <div class="card"><div class="label">Games</div><div class="value" id="gamesCount">0</div><div class="small">Current filter view</div></div>
+    <div class="card"><div class="label">High Confidence</div><div class="value" id="highCount">0</div><div class="small">Forced when playable visible rows exist</div></div>
+    <div class="card"><div class="label">Medium Confidence</div><div class="value" id="mediumCount">0</div><div class="small">Backup playable row when available</div></div>
+    <div class="card"><div class="label">Top Optional Prop</div><div class="value" id="bestProp">—</div><div class="small" id="bestPropSub">Shown only when a live prop qualifies</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header"><span>Today's Board</span><span class="muted" id="boardModeLabel">Full Game view</span></div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>First Pitch (ET)</th>
+            <th>Matchup</th>
+            <th>Moneyline / F5 ML</th>
+            <th>Total / F5 Total</th>
+            <th>Run Line / F5 RL</th>
+            <th>Best Bet</th>
+            <th>Type</th>
+            <th>Confidence</th>
+            <th>Why</th>
+          </tr>
+        </thead>
+        <tbody id="gamesTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header"><span>Game Detail</span><span class="muted">Click a row from Today’s Board</span></div>
+    <div class="detail" id="detailPanel">
+      <h2>No live game selected</h2>
+      <div class="detail-sub">When the backend returns games, click a row to inspect the reasoning.</div>
+      <div class="notes">Confidence drivers, risk warnings, and prop detail will appear here.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+var CONFIDENCE_UI_VERSION = "confidence UI fix v6 active + shared archive v1 + Phase 1 trend context + Option B archive discipline + model revision stamp";
+var DASHBOARD_JS_REVISION_DATE = "2026-05-03";
+var DASHBOARD_JS_REVISION_LABEL = "Option B archive discipline baseline; pre-550-pick calibration review";
+var DASHBOARD_JS_REVISION_ID = "dashboard-js-2026-05-03-option-b-baseline";
+var currentGames = [];
+var filteredGames = [];
+var selectedGameId = null;
+var TRACKER_STORAGE_KEY = "bobby_mlb_tracker_archive_v2";
+var DASHBOARD_VIEW_KEY = "bobby_mlb_dashboard_view_v2";
+var currentViewMode = normalizeViewMode(localStorage.getItem(DASHBOARD_VIEW_KEY) || "full");
+
+function normalizeViewMode(viewMode) {
+  return ["full", "f5", "props", "pitcher_props", "hitter_props"].indexOf(viewMode) >= 0 ? viewMode : "full";
+}
+
+function labelForViewMode(viewMode) {
+  if (viewMode === "f5") return "F5";
+  if (viewMode === "pitcher_props") return "Pitcher Props";
+  if (viewMode === "hitter_props") return "Hitter Props";
+  if (viewMode === "props") return "Props";
+  return "Full Game";
+}
+
+function setActiveModeButton() {
+  var buttons = document.querySelectorAll(".mode-btn");
+  for (var i = 0; i < buttons.length; i++) {
+    var btn = buttons[i];
+    if (btn.getAttribute("data-view") === currentViewMode) btn.classList.add("active");
+    else btn.classList.remove("active");
+  }
+  var modeLabel = document.getElementById("boardModeLabel");
+  if (modeLabel) modeLabel.textContent = labelForViewMode(currentViewMode) + " view";
+}
+function escapeHtml(value) {
+  return String(value == null ? "" : value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function setStatus(text) {
+  document.getElementById("statusBox").innerHTML =
+    escapeHtml(text) + " <span class=\"canary\">" + CONFIDENCE_UI_VERSION + "</span>";
+}
+
+function hasValue(v) {
+  return v !== null && v !== undefined && v !== "";
+}
+
+function formatBoardDateTime(rawIso, fallbackTime) {
+  if (!rawIso) return fallbackTime || "—";
+  try {
+    var d = new Date(rawIso);
+    if (isNaN(d.getTime())) return fallbackTime || "—";
+    return d.toLocaleString("en-US", {
+      timeZone: "America/New_York",
+      weekday: "short",
+      month: "numeric",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit"
+    }) + " ET";
+  } catch (e) {
+    return fallbackTime || "—";
+  }
+}
+
+function formatOdds(v) {
+  if (!hasValue(v)) return "—";
+  var n = Number(v);
+  if (!isFinite(n) || n === 0) return "—";
+  return n > 0 ? "+" + n : String(n);
+}
+
+function normalizeConfidence(label) {
+  var s = String(label || "").toLowerCase();
+  if (s.indexOf("high") >= 0) return "High";
+  if (s.indexOf("medium") >= 0) return "Medium";
+  return "Low";
+}
+
+function confidenceTier(label) {
+  label = normalizeConfidence(label);
+  if (label === "High") return "high";
+  if (label === "Medium") return "medium";
+  return "low";
+}
+
+function confidenceLabel(label) {
+  label = normalizeConfidence(label);
+  return label + " Confidence";
+}
+
+function pillClass(label) {
+  label = normalizeConfidence(label);
+  if (label === "High") return "pill good";
+  if (label === "Medium") return "pill warn";
+  return "pill bad";
+}
+
+function isPassLike(value) {
+  var s = String(value || "").trim().toLowerCase();
+  return (
+    !s ||
+    s === "pass" ||
+    s === "n/a" ||
+    s === "na" ||
+    s === "none" ||
+    s === "null" ||
+    s === "undefined" ||
+    s.indexOf("no qualifying") >= 0 ||
+    s.indexOf("no supported") >= 0 ||
+    s.indexOf("no candidate") >= 0
+  );
+}
+
+function propMarketLabel(market) {
+  var m = String(market || "");
+  var map = {
+    batter_hits: "Hits",
+    batter_total_bases: "Total Bases",
+    batter_home_runs: "Home Runs",
+    batter_rbis: "RBIs",
+    batter_runs_scored: "Runs Scored",
+    batter_hits_runs_rbis: "Hits + Runs + RBIs",
+    batter_stolen_bases: "Stolen Bases",
+    batter_walks: "Walks",
+    batter_singles: "Singles",
+    batter_doubles: "Doubles",
+    batter_triples: "Triples",
+    pitcher_strikeouts: "Pitcher Strikeouts",
+    pitcher_outs: "Pitcher Outs"
+  };
+  return map[m] || m || "Prop";
+}
+
+function resolveBestBetText(game) {
+  if (!game) return "Pass";
+
+  if (!isPassLike(game.bestBet)) return game.bestBet;
+  if (!isPassLike(game.pick)) return game.pick;
+  if (!isPassLike(game.selection)) return game.selection;
+  if (!isPassLike(game.recommendation)) return game.recommendation;
+
+  if (game.debug && game.debug.selectedBest && !isPassLike(game.debug.selectedBest.bestBet)) {
+    return game.debug.selectedBest.bestBet;
+  }
+
+  if (game.topPropOverall && game.topPropOverall.player) {
+    var prop = game.topPropOverall;
+    var side = prop.side ? " " + String(prop.side).charAt(0).toUpperCase() + String(prop.side).slice(1) : "";
+    var point = hasValue(prop.point) ? " " + prop.point : "";
+    return prop.player + " " + propMarketLabel(prop.market) + side + point;
+  }
+
+  return "Pass";
+}
+
+function resolveBestBetType(game) {
+  if (!game) return "Pass";
+
+  if (!isPassLike(game.bestBetType)) return game.bestBetType;
+  if (!isPassLike(game.type)) return game.type;
+  if (!isPassLike(game.marketType)) return game.marketType;
+
+  if (game.debug && game.debug.selectedBest && !isPassLike(game.debug.selectedBest.bestBetType)) {
+    return game.debug.selectedBest.bestBetType;
+  }
+
+  if (game.topPropOverall && game.topPropOverall.player) return "Prop";
+
+  return "Pass";
+}
+
+function resolveBestBetOdds(game) {
+  if (!game) return null;
+
+  if (hasValue(game.bestBetOdds)) return game.bestBetOdds;
+  if (hasValue(game.oddsPrice)) return game.oddsPrice;
+  if (hasValue(game.price)) return game.price;
+
+  if (game.debug && game.debug.selectedBest && hasValue(game.debug.selectedBest.oddsPrice)) {
+    return game.debug.selectedBest.oddsPrice;
+  }
+
+  if (game.topPropOverall && hasValue(game.topPropOverall.price)) {
+    return game.topPropOverall.price;
+  }
+
+  return null;
+}
+
+function isPlayableGame(game) {
+  if (!game) return false;
+
+  var bestBet = resolveBestBetText(game);
+  if (isPassLike(bestBet)) return false;
+
+  return true;
+}
+
+function confidenceScoreForSort(game) {
+  if (!game) return 0;
+
+  var n = Number(game.confidenceScore);
+  if (isFinite(n) && n > 0) return n;
+
+  var dbg = game.debug && game.debug.selectedBest ? game.debug.selectedBest : null;
+  if (dbg && isFinite(Number(dbg.finalScore))) return Number(dbg.finalScore) * 10;
+  if (dbg && isFinite(Number(dbg.confidenceScore))) return Number(dbg.confidenceScore);
+
+  if (isFinite(Number(resolveBestBetOdds(game))) && Number(resolveBestBetOdds(game)) !== 0) return 20;
+
+  return isPlayableGame(game) ? 10 : 0;
+}
+
+function applyConfidenceFields(game, label, reason) {
+  var confidence = normalizeConfidence(label);
+
+  game.confidence = confidence;
+  game.confidenceTier = confidenceTier(confidence);
+  game.confidenceLabel = confidenceLabel(confidence);
+  game.bestBetConfidence = confidenceLabel(confidence);
+  game.confidenceDisplay = confidenceLabel(confidence);
+
+  if (confidence === "High") game.confidenceScore = Math.max(Number(game.confidenceScore || 0), 81);
+  if (confidence === "Medium") game.confidenceScore = Math.max(Number(game.confidenceScore || 0), 62);
+  if (confidence === "Low") game.confidenceScore = Math.max(Number(game.confidenceScore || 0), 25);
+
+  game.clientConfidenceOverride = true;
+  game.clientConfidenceReason = reason || "Client-side confidence guarantee applied.";
+
+  return game;
+}
+
+function applyClientConfidenceGuarantee(games) {
+  var arr = Array.isArray(games) ? games : [];
+
+  for (var i = 0; i < arr.length; i++) {
+    arr[i].resolvedBestBet = resolveBestBetText(arr[i]);
+    arr[i].resolvedBestBetType = resolveBestBetType(arr[i]);
+    arr[i].resolvedBestBetOdds = resolveBestBetOdds(arr[i]);
+
+    arr[i].confidence = normalizeConfidence(arr[i].confidence);
+    arr[i].confidenceTier = confidenceTier(arr[i].confidence);
+    arr[i].confidenceLabel = confidenceLabel(arr[i].confidence);
+    arr[i].bestBetConfidence = confidenceLabel(arr[i].confidence);
+    arr[i].confidenceDisplay = confidenceLabel(arr[i].confidence);
+  }
+
+  var playable = arr.filter(isPlayableGame).sort(function(a, b) {
+    return confidenceScoreForSort(b) - confidenceScoreForSort(a);
+  });
+
+  if (playable.length > 0) {
+    applyConfidenceFields(playable[0], "High", "Strongest visible non-Pass row forced to High by index v6.");
+  }
+
+  if (playable.length > 1) {
+    applyConfidenceFields(playable[1], "Medium", "Second strongest visible non-Pass row forced to Medium by index v6.");
+  }
+
+  return arr;
+}
+
+function getTrackedPicks() {
+  try {
+    var raw = localStorage.getItem(TRACKER_STORAGE_KEY);
+    var arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function setTrackedPicks(arr) {
+  localStorage.setItem(TRACKER_STORAGE_KEY, JSON.stringify(arr));
+}
+
+function normalizeArchiveKeyPart(value) {
+  return String(value == null ? "" : value).trim().replace(/\s+/g, " ");
+}
+
+function canonicalArchiveIdForValues(eventId, rawCommenceTime, viewMode) {
+  return [
+    normalizeArchiveKeyPart(eventId),
+    normalizeArchiveKeyPart(rawCommenceTime),
+    normalizeViewMode(viewMode || currentViewMode || "full")
+  ].join("|");
+}
+
+function canonicalArchiveIdForRecord(record) {
+  if (!record) return "";
+
+  var eventId = record.eventId || record.event_id || "";
+  var rawCommenceTime = record.rawCommenceTime || record.raw_commence_time || "";
+  var viewMode = record.viewMode || record.view_mode || "";
+
+  if (eventId && rawCommenceTime && viewMode) {
+    return canonicalArchiveIdForValues(eventId, rawCommenceTime, viewMode);
+  }
+
+  return record.archiveId || record.archive_id || [
+    eventId,
+    rawCommenceTime,
+    record.bestBet || record.best_bet || "",
+    record.bestBetType || record.best_bet_type || ""
+  ].join("|");
+}
+
+function archiveIdForGame(game) {
+  return canonicalArchiveIdForValues(
+    game.eventId || game.id || "",
+    game.rawCommenceTime || "",
+    game.viewMode || currentViewMode || "full"
+  );
+}
+
+function safeJsonClone(value) {
+  try { return JSON.parse(JSON.stringify(value == null ? null : value)); } catch (e) { return null; }
+}
+function numericOrNull(value) { var n = Number(value); return isFinite(n) ? n : null; }
+function cleanText(value) { return String(value || "").replace(/\s+/g, " ").trim(); }
+function lowerText(value) { return cleanText(value).toLowerCase(); }
+function propMarketFromBestBet(bestBet) {
+  var b = lowerText(bestBet);
+  var rules = [
+    [/pitcher strikeouts/, "Pitcher Strikeouts", "pitcher_strikeouts"],
+    [/pitcher outs/, "Pitcher Outs", "pitcher_outs"],
+    [/pitcher earned runs|earned runs/, "Pitcher Earned Runs", "pitcher_earned_runs"],
+    [/hits \+ runs \+ rbis|hits runs rbis/, "Hits + Runs + RBIs", "batter_hits_runs_rbis"],
+    [/total bases/, "Total Bases", "batter_total_bases"],
+    [/home runs/, "Home Runs", "batter_home_runs"],
+    [/stolen bases/, "Stolen Bases", "batter_stolen_bases"],
+    [/runs scored/, "Runs Scored", "batter_runs_scored"],
+    [/singles/, "Singles", "batter_singles"],
+    [/doubles/, "Doubles", "batter_doubles"],
+    [/triples/, "Triples", "batter_triples"],
+    [/walks/, "Walks", "batter_walks"],
+    [/rbis|rbi/, "RBIs", "batter_rbis"],
+    [/\bhits\b/, "Hits", "batter_hits"]
+  ];
+  for (var i = 0; i < rules.length; i++) { if (rules[i][0].test(b)) return { label: rules[i][1], key: rules[i][2] }; }
+  return { label: "", key: "" };
+}
+function playerFromBestBet(bestBet, propMarketLabel) {
+  if (!propMarketLabel) return "";
+  var b = lowerText(bestBet); var market = lowerText(propMarketLabel); var idx = b.indexOf(market);
+  if (idx > 0) return cleanText(String(bestBet || "").slice(0, idx));
+  var labels = ["pitcher strikeouts","pitcher outs","pitcher earned runs","hits + runs + rbis","hits runs rbis","total bases","home runs","stolen bases","runs scored","singles","doubles","triples","walks","rbis","rbi","hits"];
+  for (var i = 0; i < labels.length; i++) { var j = b.indexOf(labels[i]); if (j > 0) return cleanText(String(bestBet || "").slice(0, j)); }
+  return "";
+}
+function betDirectionFromBestBet(bestBet, bestBetType) {
+  var b = lowerText(bestBet); var t = lowerText(bestBetType);
+  if (/\bover\b/.test(b)) return "Over";
+  if (/\bunder\b/.test(b)) return "Under";
+  if (/\bml\b|moneyline/.test(b) || /moneyline/.test(t)) return "Side";
+  if (/[+-]\d+(\.\d+)?/.test(b) && !/\bover\b|\bunder\b/.test(b)) return "Side";
+  return "Other";
+}
+function lineValueFromBestBet(bestBet) {
+  var b = cleanText(bestBet).replace(/\bF5\b/ig, "");
+  var totalMatch = b.match(/(?:Over|Under)\s+([0-9]+(?:\.[0-9]+)?)/i);
+  if (totalMatch) return numericOrNull(totalMatch[1]);
+  var spreadMatch = b.match(/\s([+-][0-9]+(?:\.[0-9]+)?)(?:\s|$)/);
+  return spreadMatch ? numericOrNull(spreadMatch[1]) : null;
+}
+function selectionTeamFromGame(game, bestBet) { var b = lowerText(bestBet); if (game.away && b.indexOf(lowerText(game.away)) === 0) return game.away; if (game.home && b.indexOf(lowerText(game.home)) === 0) return game.home; return ""; }
+function opponentFromSelection(game, selectionTeam) { if (!selectionTeam) return ""; if (lowerText(selectionTeam) === lowerText(game.away)) return game.home || ""; if (lowerText(selectionTeam) === lowerText(game.home)) return game.away || ""; return ""; }
+function homeAwayFromSelection(game, selectionTeam) { if (!selectionTeam) return ""; if (lowerText(selectionTeam) === lowerText(game.home)) return "Home"; if (lowerText(selectionTeam) === lowerText(game.away)) return "Away"; return ""; }
+function oddsBucket(price) { var p = numericOrNull(price); if (p == null) return "No Odds"; if (p <= -180) return "Heavy Favorite <= -180"; if (p <= -140) return "Favorite -179 to -140"; if (p < 0) return "Small Favorite -139 to -101"; if (p <= 120) return "Near Even +100 to +120"; if (p <= 160) return "Plus Money +121 to +160"; return "Long Shot +161+"; }
+function scoreBucket(score) { var s = numericOrNull(score); if (s == null) return "No Score"; if (s >= 90) return "90+"; if (s >= 80) return "80-89"; if (s >= 70) return "70-79"; if (s >= 60) return "60-69"; return "Below 60"; }
+function buildTrendContext(game, record) {
+  var bestBet = record.bestBet || resolveBestBetText(game); var bestBetType = record.bestBetType || resolveBestBetType(game);
+  var prop = propMarketFromBestBet(bestBet); var player = playerFromBestBet(bestBet, prop.label); var direction = betDirectionFromBestBet(bestBet, bestBetType);
+  var selectionTeam = selectionTeamFromGame(game, bestBet); var opponent = opponentFromSelection(game, selectionTeam); var homeAway = homeAwayFromSelection(game, selectionTeam);
+  var selected = game.debug && game.debug.selectedBest ? game.debug.selectedBest : {}; var score = hasValue(record.score) ? Number(record.score) : (hasValue(game.confidenceScore) ? Number(game.confidenceScore) : null); var odds = resolveBestBetOdds(game);
+  var trendTags = { view_mode: record.viewMode || game.viewMode || currentViewMode, best_bet_type: bestBetType, bet_direction: direction, selection_team: selectionTeam, opponent: opponent, home_away: homeAway, player_name: player, prop_market: prop.label, market_key: prop.key || selected.market || "", line_value: lineValueFromBestBet(bestBet), odds_bucket: oddsBucket(odds), score_bucket: scoreBucket(score), favorite_dog: hasValue(odds) ? (Number(odds) > 0 ? "Plus Money / Dog Price" : "Favorite / Minus Price") : "No Odds", is_prop: bestBetType === "Prop", is_f5: String(bestBetType || "").indexOf("F5") >= 0 || String(bestBet || "").indexOf("F5") >= 0, is_over: direction === "Over", is_under: direction === "Under" };
+  var modelSnapshot = { snapshotVersion: "phase1_level1_trend_context_v2", dashboardJsRevisionId: DASHBOARD_JS_REVISION_ID, dashboardJsRevisionDate: DASHBOARD_JS_REVISION_DATE, dashboardJsRevisionLabel: DASHBOARD_JS_REVISION_LABEL, archivedAt: record.archivedAt, viewMode: trendTags.view_mode, bestBet: bestBet, bestBetType: bestBetType, oddsPrice: hasValue(odds) ? Number(odds) : null, confidence: record.confidence || normalizeConfidence(game.confidence), score: score, pickScore: hasValue(game.pickScore) ? Number(game.pickScore) : null, confidenceScore: hasValue(game.confidenceScore) ? Number(game.confidenceScore) : null, modelScore: hasValue(game.modelScore) ? Number(game.modelScore) : (hasValue(selected.finalScore) ? Number(selected.finalScore) : null), edgePct: hasValue(selected.edgePct) ? Number(selected.edgePct) : null, finalScore: hasValue(selected.finalScore) ? Number(selected.finalScore) : null, impliedProb: hasValue(selected.impliedProb) ? Number(selected.impliedProb) : null, modelProb: hasValue(selected.modelProb) ? Number(selected.modelProb) : null, fairMlAway: game.fairMlAway || null, fairMlHome: game.fairMlHome || null, fairTotal: game.fairTotal || null, awayEdgePct: game.awayEdgePct || null, homeEdgePct: game.homeEdgePct || null, overEdgePct: game.overEdgePct || null, underEdgePct: game.underEdgePct || null, componentScores: safeJsonClone(game.componentScores), marketRunEnvironment: game.marketRunEnvironment || "", impliedRuns: safeJsonClone(game.impliedRuns), marketAvailability: safeJsonClone(game.marketAvailability), probablePitchers: safeJsonClone(game.probablePitchers), lineupMode: game.lineupMode || "", riskWarnings: safeJsonClone(game.riskWarnings), analysisSummary: safeJsonClone(game.analysisSummary), analysisSummaryText: game.analysisSummaryText || "", sameGameScenario: safeJsonClone(game.debug && game.debug.sameGameScenario ? game.debug.sameGameScenario : null), realWorld: safeJsonClone(game.debug && game.debug.realWorld ? game.debug.realWorld : null), selectedBest: safeJsonClone(selected) };
+  trendTags.dashboard_js_revision_id = DASHBOARD_JS_REVISION_ID;
+  trendTags.dashboard_js_revision_date = DASHBOARD_JS_REVISION_DATE;
+  trendTags.dashboard_js_revision_label = DASHBOARD_JS_REVISION_LABEL;
+  return { trendTags: trendTags, modelSnapshot: modelSnapshot, dashboardJsRevisionId: DASHBOARD_JS_REVISION_ID, dashboardJsRevisionDate: DASHBOARD_JS_REVISION_DATE, dashboardJsRevisionLabel: DASHBOARD_JS_REVISION_LABEL, analysisNotes: game.analysisSummaryText || (Array.isArray(game.analysisSummary) ? game.analysisSummary.join(" • ") : ""), selectionTeam: selectionTeam, opponent: opponent, playerName: player, marketKey: trendTags.market_key, propMarket: prop.label, betDirection: direction, lineValue: trendTags.line_value, homeAway: homeAway, oddsBucket: trendTags.odds_bucket, scoreBucket: trendTags.score_bucket, edgePct: modelSnapshot.edgePct, modelScore: modelSnapshot.modelScore, finalScore: modelSnapshot.finalScore, impliedProb: modelSnapshot.impliedProb, modelProb: modelSnapshot.modelProb };
+}
+
+async function saveArchiveRowToSharedStore(record) {
+  try {
+    var payload = {
+      archive_id: record.archiveId,
+      archived_at: record.archivedAt,
+      event_id: record.eventId || "",
+      raw_commence_time: record.rawCommenceTime || null,
+      away: record.away || "",
+      home: record.home || "",
+      matchup: record.matchup || "",
+      best_bet: record.bestBet || "",
+      best_bet_type: record.bestBetType || "",
+      view_mode: record.viewMode || "",
+      confidence: record.confidence || "",
+      score: hasValue(record.score) ? Number(record.score) : null,
+      odds_price: hasValue(record.oddsPrice) ? Number(record.oddsPrice) : null,
+      result_status: record.resultStatus || "Pending",
+      grade: record.grade || "",
+      result_detail: record.resultDetail || "",
+      net_units: hasValue(record.netUnits) ? Number(record.netUnits) : null,
+      profit_dollars: hasValue(record.profitDollars) ? Number(record.profitDollars) : null,
+      source: record.source || "Archive",
+      model_snapshot: record.modelSnapshot || null,
+      trend_tags: record.trendTags || null,
+      analysis_notes: record.analysisNotes || "",
+      selection_team: record.selectionTeam || "",
+      opponent: record.opponent || "",
+      player_name: record.playerName || "",
+      market_key: record.marketKey || "",
+      prop_market: record.propMarket || "",
+      bet_direction: record.betDirection || "",
+      line_value: hasValue(record.lineValue) ? Number(record.lineValue) : null,
+      home_away: record.homeAway || "",
+      odds_bucket: record.oddsBucket || "",
+      score_bucket: record.scoreBucket || "",
+      edge_pct: hasValue(record.edgePct) ? Number(record.edgePct) : null,
+      model_score: hasValue(record.modelScore) ? Number(record.modelScore) : null,
+      final_score: hasValue(record.finalScore) ? Number(record.finalScore) : null,
+      implied_prob: hasValue(record.impliedProb) ? Number(record.impliedProb) : null,
+      model_prob: hasValue(record.modelProb) ? Number(record.modelProb) : null
+    };
+
+    await fetch("/api/archive-save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+  } catch (err) {
+    // Fail silently so dashboard UX stays intact.
+  }
+}
+
+function archiveHighConfidencePicks(games) {
+  if (!Array.isArray(games) || !games.length) return 0;
+
+  var existing = getTrackedPicks();
+  var map = {};
+
+  existing.forEach(function(p) {
+    var key = canonicalArchiveIdForRecord(p);
+    if (!key) return;
+
+    p.archiveId = key;
+
+    if (!map[key]) {
+      map[key] = p;
+      return;
+    }
+
+    var existingTime = new Date(map[key].archivedAt || 0).getTime();
+    var incomingTime = new Date(p.archivedAt || 0).getTime();
+
+    if (incomingTime >= existingTime) {
+      map[key] = Object.assign({}, map[key], p);
+    } else {
+      map[key] = Object.assign({}, p, map[key]);
+    }
+  });
+
+  var added = 0;
+
+  games.forEach(function(game) {
+    if (!isPlayableGame(game)) return;
+    if (normalizeConfidence(game.confidence) !== "High") return;
+
+    var record = {
+      archiveId: archiveIdForGame(game),
+      archivedAt: new Date().toISOString(),
+      source: "Auto-archived from index Option B game-view archive v1 | Dashboard JS revision " + DASHBOARD_JS_REVISION_DATE,
+      eventId: game.eventId || game.id || "",
+      rawCommenceTime: game.rawCommenceTime || "",
+      away: game.away || "",
+      home: game.home || "",
+      matchup: (game.away || "") + " @ " + (game.home || ""),
+      bestBet: resolveBestBetText(game),
+      bestBetType: resolveBestBetType(game),
+      confidence: normalizeConfidence(game.confidence),
+      score: hasValue(game.score) ? Number(game.score) : (hasValue(game.confidenceScore) ? Number(game.confidenceScore) : null),
+      oddsPrice: resolveBestBetOdds(game),
+      moneyline: game.moneyline || "",
+      total: game.total || "",
+      runLine: game.runLine || "",
+      firstFiveMoneyline: game.firstFiveMoneyline || "",
+      firstFiveRunLine: game.firstFiveRunLine || "",
+      firstFiveTotal: game.firstFiveTotal || "",
+      viewMode: game.viewMode || currentViewMode || "full",
+      resultStatus: "Pending",
+      resultDetail: "",
+      grade: "",
+      netUnits: null,
+      profitDollars: null
+    };
+
+    var trendContext = buildTrendContext(game, record);
+    record = Object.assign(record, trendContext);
+
+    var isNew = !map[record.archiveId];
+    if (isNew) {
+      map[record.archiveId] = record;
+      added += 1;
+    } else {
+      map[record.archiveId] = Object.assign({}, map[record.archiveId], record, {
+        resultStatus: map[record.archiveId].resultStatus || "Pending",
+        resultDetail: map[record.archiveId].resultDetail || "",
+        grade: map[record.archiveId].grade || ""
+      });
+      record = map[record.archiveId];
+    }
+
+    saveArchiveRowToSharedStore(record);
+  });
+
+  var merged = Object.keys(map).map(function(k) { return map[k]; });
+  merged.sort(function(a, b) {
+    return new Date(b.rawCommenceTime || b.archivedAt || 0).getTime() -
+           new Date(a.rawCommenceTime || a.archivedAt || 0).getTime();
+  });
+
+  setTrackedPicks(merged);
+  return added;
+}
+function getMarketText(game, field, fallback) {
+  var v = game && game[field];
+  if (!hasValue(v)) return fallback || "N/A";
+  var s = String(v);
+  if (/Over 0|Under 0|\s0\s*\|/.test(s)) return "N/A";
+  return s;
+}
+
+function getMoneylineText(game) {
+  if (currentViewMode === "f5") return getMarketText(game, "firstFiveMoneyline", "N/A");
+  return getMarketText(game, "moneyline", "N/A");
+}
+
+function getTotalText(game) {
+  if (currentViewMode === "f5") return getMarketText(game, "firstFiveTotal", "N/A");
+  return getMarketText(game, "total", "N/A");
+}
+
+function getRunLineText(game) {
+  if (currentViewMode === "f5") return getMarketText(game, "firstFiveRunLine", "N/A");
+  return getMarketText(game, "runLine", "N/A");
+}
+
+function reasonText(game) {
+  if (game && game.clientConfidenceOverride) return game.clientConfidenceReason;
+
+  var reasons = game && Array.isArray(game.reasons) ? game.reasons : [];
+  if (reasons.length) return reasons[0];
+
+  if (game && game.topPropOverallReason) return game.topPropOverallReason;
+
+  if (game && game.debug && game.debug.selectedBest && game.debug.selectedBest.conflictReason) {
+    return game.debug.selectedBest.conflictReason;
+  }
+
+  return "Backend returned this row for the current view.";
+}
+
+function filterGamesByConfidence(games) {
+  var selected = document.getElementById("confidenceFilter").value || "All";
+  if (selected === "All") return games.slice();
+  return games.filter(function(g) {
+    return normalizeConfidence(g.confidence) === selected;
+  });
+}
+
+function renderCards() {
+  var high = currentGames.filter(function(g) {
+    return normalizeConfidence(g.confidence) === "High" && isPlayableGame(g);
+  }).length;
+
+  var medium = currentGames.filter(function(g) {
+    return normalizeConfidence(g.confidence) === "Medium" && isPlayableGame(g);
+  }).length;
+
+  document.getElementById("gamesCount").textContent = String(filteredGames.length);
+  document.getElementById("highCount").textContent = String(high);
+  document.getElementById("mediumCount").textContent = String(medium);
+
+  var topProp = currentGames.find(function(g) {
+    return g.topPropOverall && g.topPropOverall.player;
+  });
+
+  if (topProp && topProp.topPropOverall) {
+    document.getElementById("bestProp").textContent = topProp.topPropOverall.player || "Prop";
+    document.getElementById("bestPropSub").textContent = topProp.topPropOverallReason || "Top prop candidate returned.";
+  } else {
+    document.getElementById("bestProp").textContent = "—";
+    document.getElementById("bestPropSub").textContent = "No prop candidate returned for this view.";
+  }
+}
+
+function renderTable() {
+  currentGames = applyClientConfidenceGuarantee(currentGames);
+  filteredGames = filterGamesByConfidence(currentGames);
+  renderCards();
+
+  var tbody = document.getElementById("gamesTable");
+  tbody.innerHTML = "";
+
+  if (!filteredGames.length) {
+    tbody.innerHTML = '<tr><td colspan="9" class="empty-row">No rows match the current confidence filter.</td></tr>';
+    return;
+  }
+
+  filteredGames.forEach(function(game, idx) {
+    var tr = document.createElement("tr");
+    tr.setAttribute("data-game-id", game.id || game.eventId || String(idx));
+
+    tr.innerHTML =
+      "<td>" + escapeHtml(formatBoardDateTime(game.rawCommenceTime, game.time)) + "</td>" +
+      "<td><strong>" + escapeHtml((game.away || "") + " @ " + (game.home || "")) + "</strong></td>" +
+      "<td>" + escapeHtml(getMoneylineText(game)) + "</td>" +
+      "<td>" + escapeHtml(getTotalText(game)) + "</td>" +
+      "<td>" + escapeHtml(getRunLineText(game)) + "</td>" +
+      "<td><strong>" + escapeHtml(resolveBestBetText(game)) + "</strong><div class=\"muted\">" + escapeHtml(formatOdds(resolveBestBetOdds(game))) + "</div></td>" +
+      "<td>" + escapeHtml(resolveBestBetType(game)) + "</td>" +
+      "<td><span class=\"" + pillClass(game.confidence) + "\">" + escapeHtml(confidenceLabel(game.confidence)) + "</span></td>" +
+      "<td>" + escapeHtml(reasonText(game)) + "</td>";
+
+    tr.addEventListener("click", function() {
+      renderDetail(game);
+    });
+
+    tbody.appendChild(tr);
+  });
+}
+
+function boxHtml(k, v) {
+  return '<div class="box"><div class="k">' + escapeHtml(k) + '</div><div class="v">' + escapeHtml(v == null || v === "" ? "—" : v) + '</div></div>';
+}
+
+function renderReasons(game) {
+  var reasons = Array.isArray(game.reasons) ? game.reasons.slice(0, 6) : [];
+
+  if (game.clientConfidenceReason) reasons.unshift(game.clientConfidenceReason);
+  if (!reasons.length) reasons.push("No detailed reason returned by backend.");
+
+  return '<ul class="reason-list">' + reasons.map(function(r) {
+    return '<li>' + escapeHtml(r) + '</li>';
+  }).join("") + '</ul>';
+}
+
+function renderDetail(game) {
+  if (!game) return;
+
+  selectedGameId = game.id || game.eventId || null;
+  game = applyClientConfidenceGuarantee([game])[0];
+
+  var probable = game.probablePitchers || {};
+  var warnings = Array.isArray(game.riskWarnings) ? game.riskWarnings : [];
+  var warnText = warnings.length ? warnings.join(" | ") : "No major warning returned.";
+
+  document.getElementById("detailPanel").innerHTML =
+    '<h2>' + escapeHtml((game.away || "") + " @ " + (game.home || "")) + '</h2>' +
+    '<div class="detail-sub">' + escapeHtml(formatBoardDateTime(game.rawCommenceTime, game.time)) + ' · <span class="' + pillClass(game.confidence) + '">' + escapeHtml(confidenceLabel(game.confidence)) + '</span></div>' +
+    '<div class="detail-grid">' +
+      boxHtml("Best Bet", resolveBestBetText(game)) +
+      boxHtml("Type / Odds", resolveBestBetType(game) + " " + formatOdds(resolveBestBetOdds(game))) +
+      boxHtml("Confidence", confidenceLabel(game.confidence)) +
+      boxHtml("Moneyline", getMoneylineText(game)) +
+      boxHtml("Total", getTotalText(game)) +
+      boxHtml("Run Line", getRunLineText(game)) +
+      boxHtml("Probable Pitchers", (probable.away || "TBD") + " vs " + (probable.home || "TBD")) +
+      boxHtml("Lineup Mode", game.lineupMode || "projected") +
+      boxHtml("UI Version", CONFIDENCE_UI_VERSION) +
+    '</div>' +
+    '<div class="notes"><strong>Why</strong>' + renderReasons(game) + '</div>' +
+    '<div class="notes" style="margin-top:12px;"><strong>Risk Warnings</strong><br>' + escapeHtml(warnText) + '</div>';
+}
+
+function renderAll() {
+  setActiveModeButton();
+  currentGames = applyClientConfidenceGuarantee(currentGames);
+  renderTable();
+
+  var selected = selectedGameId ? currentGames.find(function(g) {
+    return (g.id || g.eventId) === selectedGameId;
+  }) : null;
+
+  if (selected) renderDetail(selected);
+}
+
+async function loadDashboard() {
+  setActiveModeButton();
+  document.getElementById("confidenceFilter").value = "All";
+  setStatus("Loading " + labelForViewMode(currentViewMode) + " data...");
+
+  try {
+    var url = "/api/dashboard?view=" + encodeURIComponent(currentViewMode) + "&cacheBust=" + encodeURIComponent(Date.now());
+    var res = await fetch(url, { cache: "no-store" });
+    var text = await res.text();
+    var data;
+
+    try {
+      data = JSON.parse(text);
+    } catch (jsonErr) {
+      throw new Error("API returned non-JSON: " + text.slice(0, 180));
+    }
+
+    if (!res.ok) {
+      throw new Error(data && data.details ? data.details : (data && data.error ? data.error : "API request failed"));
+    }
+
+    currentGames = Array.isArray(data.games) ? data.games : [];
+
+    currentGames.forEach(function(g) {
+      g.viewMode = g.viewMode || currentViewMode;
+    });
+
+    currentGames = applyClientConfidenceGuarantee(currentGames);
+
+    var playableCount = currentGames.filter(isPlayableGame).length;
+    var added = archiveHighConfidencePicks(currentGames);
+
+    renderAll();
+
+    var high = currentGames.filter(function(g) {
+      return normalizeConfidence(g.confidence) === "High" && isPlayableGame(g);
+    }).length;
+
+    var medium = currentGames.filter(function(g) {
+      return normalizeConfidence(g.confidence) === "Medium" && isPlayableGame(g);
+    }).length;
+
+    setStatus(
+      "Loaded " + currentGames.length +
+      " rows for " + labelForViewMode(currentViewMode) +
+      ". Playable: " + playableCount +
+      ". High: " + high +
+      ". Medium: " + medium +
+      ". New game/view High slots archived: " + added + ". Existing slots update instead of duplicating."
+    );
+  } catch (err) {
+    currentGames = [];
+    filteredGames = [];
+    renderAll();
+    setStatus("Live data unavailable. " + err.message);
+  }
+}
+
+function wireEvents() {
+  document.getElementById("openTrackerBtn").addEventListener("click", function() {
+    window.location.href = "tracker.html";
+  });
+
+  document.getElementById("openTrendsBtn").addEventListener("click", function() {
+    window.location.href = "data-trends.html";
+  });
+
+  document.getElementById("confidenceFilter").addEventListener("change", function() {
+    renderAll();
+  });
+
+  var buttons = document.querySelectorAll(".mode-btn");
+  for (var i = 0; i < buttons.length; i++) {
+    buttons[i].addEventListener("click", function() {
+      currentViewMode = normalizeViewMode(this.getAttribute("data-view"));
+      localStorage.setItem(DASHBOARD_VIEW_KEY, currentViewMode);
+      selectedGameId = null;
+      loadDashboard();
+    });
+  }
+}
+
+wireEvents();
+loadDashboard();
+</script>
+</body>
+</html>
