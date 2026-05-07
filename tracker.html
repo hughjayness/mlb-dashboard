@@ -1,0 +1,1584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bobby's Pick Tracker</title>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <style>
+    :root{
+      --bg:#14061f;--bg2:#071a26;--text:#f8f7ff;--muted:#c8b9dc;
+      --good:#44f0a1;--warn:#ffd166;--bad:#ff6b8a;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;font-family:Inter,Arial,sans-serif;color:var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(255,79,216,.18), transparent 24%),
+        radial-gradient(circle at top right, rgba(57,215,255,.14), transparent 24%),
+        linear-gradient(180deg,var(--bg),var(--bg2));
+      min-height:100vh;
+    }
+    .wrap{max-width:1600px;margin:0 auto;padding:20px}
+    h1{margin:0 0 10px;font-size:34px}
+    .toolbar{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0 16px;align-items:end}
+    .btn,.unit-input{
+      background:#10273a;color:#f8f7ff;border:1px solid rgba(255,79,216,.35);
+      border-radius:12px;padding:10px 12px;font-weight:700;
+    }
+    .btn{cursor:pointer}
+    .btn:hover{box-shadow:0 0 0 1px rgba(68,240,161,.25) inset}
+    .date-filter-btn.active{box-shadow:0 0 0 2px rgba(68,240,161,.42) inset;border-color:rgba(68,240,161,.75)}
+    .unit-wrap{display:flex;flex-direction:column;gap:6px}
+    .unit-wrap label{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:#ffd8f6}
+    .unit-input{width:150px}
+    .cards{display:grid;grid-template-columns:repeat(8,minmax(125px,1fr));gap:14px;margin:18px 0}
+    .card,.panel{
+      background:linear-gradient(180deg,rgba(27,16,48,.98),rgba(16,39,58,.96));
+      border:1px solid rgba(255,79,216,.35);border-radius:18px;padding:16px
+    }
+    .panel{padding:0;overflow:hidden}
+    .label{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:#ffd8f6}
+    .value{font-size:28px;font-weight:800;margin-top:10px}
+    .revision-value{font-size:19px;line-height:1.2}
+    .small,.muted{font-size:13px;color:var(--muted);margin-top:8px;line-height:1.35}
+    .panel-header{padding:16px 18px;border-bottom:1px solid rgba(57,215,255,.28);font-weight:800;display:flex;justify-content:space-between;align-items:center;gap:10px}
+    .panel-body{padding:18px}
+    .table-wrap{overflow-x:auto}
+    table{width:100%;border-collapse:collapse;min-width:1550px}
+    th,td{padding:12px 10px;border-bottom:1px solid rgba(255,255,255,.06);text-align:left;font-size:14px;vertical-align:top}
+    th{color:#ffd9f5;font-size:12px;text-transform:uppercase;letter-spacing:.08em;background:rgba(255,79,216,.05)}
+    .pill{display:inline-block;padding:6px 10px;border-radius:999px;font-size:12px;font-weight:800;white-space:nowrap}
+    .good{background:rgba(68,240,161,.14);color:var(--good)}
+    .warn{background:rgba(255,209,102,.14);color:var(--warn)}
+    .bad{background:rgba(255,107,138,.14);color:var(--bad)}
+    .flash{font-size:12px;color:var(--good);margin-left:6px;line-height:1.35}
+    .row-win{background:rgba(68,240,161,.10)}
+    .row-win:hover{background:rgba(68,240,161,.16) !important}
+    .row-loss{background:rgba(255,107,138,.07)}
+    .row-loss:hover{background:rgba(255,107,138,.12) !important}
+    .grade-win{color:var(--good);font-weight:900}
+    .grade-loss{color:var(--bad);font-weight:900}
+    .grade-push{color:var(--warn);font-weight:900}
+    .danger-btn{
+      color:#ff6b8a !important;font-weight:900;border-color:rgba(255,107,138,.6) !important;
+    }
+    .danger-btn:hover{box-shadow:0 0 0 1px rgba(255,107,138,.35) inset}
+    .footer-toolbar{display:flex;gap:10px;flex-wrap:wrap;margin:16px 0 0;align-items:end;justify-content:flex-end}
+    .confirm-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:16px;z-index:1000}
+    .confirm-backdrop.show{display:flex}
+    .confirm-card{max-width:460px;width:100%;background:linear-gradient(180deg,rgba(27,16,48,.98),rgba(16,39,58,.96));border:1px solid rgba(255,79,216,.35);border-radius:18px;padding:18px;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+    .confirm-title{font-size:22px;font-weight:800;margin:0 0 10px}
+    .confirm-text{color:var(--muted);line-height:1.5;margin-bottom:16px}
+    .confirm-actions{display:flex;gap:10px;justify-content:flex-end}
+    @media (max-width:1100px){.cards{grid-template-columns:repeat(3,minmax(140px,1fr))}}
+    @media (max-width:800px){.cards{grid-template-columns:repeat(2,minmax(140px,1fr))}}
+    @media (max-width:700px){.cards{grid-template-columns:1fr}.wrap{padding:12px}h1{font-size:26px}.panel-header{align-items:flex-start;flex-direction:column}}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Bobby's Pick Tracker</h1>
+  <div class="toolbar">
+    <div class="unit-wrap">
+      <label for="unitSize">Unit Size ($)</label>
+      <input id="unitSize" class="unit-input" type="number" min="1" step="1" value="10" />
+    </div>
+    <div class="unit-wrap">
+      <label for="sortOrder">First Pitch Sort</label>
+      <select id="sortOrder" class="unit-input">
+        <option value="desc" selected>Newest to Oldest</option>
+        <option value="asc">Oldest to Newest</option>
+      </select>
+    </div>
+    <button class="btn" id="refreshBtn">Refresh Grades</button>
+    <button class="btn date-filter-btn active" data-date-filter="all" id="filterAllBtn">All Games</button>
+    <button class="btn date-filter-btn" data-date-filter="today" id="filterTodayBtn">Today's Games</button>
+    <button class="btn date-filter-btn" data-date-filter="tomorrow" id="filterTomorrowBtn">Tomorrow's Games</button>
+    <button class="btn" id="dedupeBtn">Remove Duplicates</button>
+    <button class="btn" id="backBtn">Back to Dashboard</button>
+    <button class="btn" id="trendsBtn">Data Trends</button>
+    <span id="flash" class="flash"></span>
+  </div>
+
+  <div class="cards">
+    <div class="card"><div class="label">Tracked Picks</div><div class="value" id="cardCount">0</div><div class="small" id="cardCountSub">Shared + local archive rows</div></div>
+    <div class="card"><div class="label">Dashboard JS Revision</div><div class="value revision-value" id="cardDashboardJsRevision">—</div><div class="small" id="cardDashboardJsRevisionSub">Model baseline</div></div>
+    <div class="card"><div class="label">Graded Picks</div><div class="value" id="cardGraded">0</div><div class="small">Win / Loss / Push</div></div>
+    <div class="card"><div class="label">Wins-Losses-Ties</div><div class="value" id="cardRecord">—</div><div class="small">Manual counting no longer needed</div></div>
+    <div class="card"><div class="label">Win Rate</div><div class="value" id="cardWinRate">—</div><div class="small">Excludes pushes and pending</div></div>
+    <div class="card"><div class="label">Net Units</div><div class="value" id="cardNetUnits">—</div><div class="small">1 unit risked per bet</div></div>
+    <div class="card"><div class="label">Net Profit ($)</div><div class="value" id="cardNetDollars">—</div><div class="small">Based on unit size</div></div>
+    <div class="card"><div class="label">ROI %</div><div class="value" id="cardRoi">—</div><div class="small">Net units / units risked</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <span>Tracked Archive</span>
+      <span class="muted" id="sharedStatus">Loading shared archive...</span>
+    </div>
+    <div class="panel-body table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>First Pitch (ET)</th>
+            <th>Matchup</th>
+            <th>Best Bet</th>
+            <th>Type</th>
+            <th>Confidence</th>
+            <th>Score</th>
+            <th>Status</th>
+            <th>Grade</th>
+            <th>Odds</th>
+            <th>Units</th>
+            <th>Profit ($)</th>
+            <th>Result Detail</th>
+            <th>Source</th>
+          </tr>
+        </thead>
+        <tbody id="trackerBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="footer-toolbar">
+    <button class="btn" id="importBtn">Import/Merge Archive (Excel)</button>
+    <input type="file" id="importInput" accept=".xlsx,.xls" style="display:none;">
+    <button class="btn danger-btn" id="replaceSharedBtn">Replace Shared Archive With Excel</button>
+    <input type="file" id="replaceInput" accept=".xlsx,.xls" style="display:none;">
+    <button class="btn" id="exportBtn">Export Tracker (Excel)</button>
+    <button class="btn danger-btn" id="clearSharedBtn">Clear Shared Archive</button>
+    <button class="btn danger-btn" id="clearBtn">Clear Local Tracker</button>
+  </div>
+</div>
+
+<div class="confirm-backdrop" id="confirmClearModal" aria-hidden="true">
+  <div class="confirm-card" role="dialog" aria-modal="true" aria-labelledby="confirmClearTitle">
+    <div class="confirm-title" id="confirmClearTitle">Are you sure?</div>
+    <div class="confirm-text">This clears the tracker copy stored in this browser only. Shared Supabase rows are not deleted. Use Clear Shared Archive or Remove Today's Pending Picks for database cleanup.</div>
+    <div class="confirm-actions">
+      <button class="btn" id="confirmClearNo">No</button>
+      <button class="btn danger-btn" id="confirmClearYes">Yes</button>
+    </div>
+  </div>
+</div>
+
+<script>
+var STORAGE_KEY = "bobby_mlb_tracker_archive_v2";
+var UNIT_SIZE_KEY = "bobby_mlb_unit_size_v1";
+var SORT_ORDER_KEY = "bobby_mlb_tracker_sort_order_v1";
+var TRACKER_DATE_FILTER_KEY = "bobby_mlb_tracker_date_filter_v1";
+var SHARED_ARCHIVE_VERSION = "shared archive + grading fix v10 + database-aware clear/import controls";
+var DASHBOARD_JS_REVISION_DATE = "2026-05-03";
+var DASHBOARD_JS_REVISION_LABEL = "Phase 1 Data Trends calibration: directional gates, prop-over filters, no blanket High forcing";
+var DASHBOARD_JS_REVISION_ID = "phase1-data-trends-v11-2026-05-03";
+
+function hasValue(v) { return v !== null && v !== undefined && v !== ""; }
+
+function escapeHtml(value) {
+  return String(value == null ? "" : value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function setSharedStatus(text) {
+  var el = document.getElementById("sharedStatus");
+  if (el) el.textContent = text;
+}
+
+function formatBoardDateTime(rawIso, fallbackText) {
+  if (!rawIso) return fallbackText || "—";
+  try {
+    var d = new Date(rawIso);
+    if (isNaN(d.getTime())) return fallbackText || "—";
+    return d.toLocaleString("en-US", {
+      timeZone: "America/New_York", weekday: "short", month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit"
+    }) + " ET";
+  } catch(e) { return fallbackText || "—"; }
+}
+
+function flash(text) {
+  var el = document.getElementById("flash");
+  el.textContent = text;
+  setTimeout(function(){ el.textContent = ""; }, 3500);
+}
+
+function pillClass(label) {
+  if (label === "High") return "pill good";
+  if (label === "Medium") return "pill warn";
+  return "pill bad";
+}
+
+function gradeClass(label) {
+  if (label === "Win") return "grade-win";
+  if (label === "Loss") return "grade-loss";
+  if (label === "Push") return "grade-push";
+  return "";
+}
+
+function rowClassForPick(pick) {
+  if (!pick) return "";
+  if (pick.grade === "Win") return "row-win";
+  if (pick.grade === "Loss") return "row-loss";
+  return "";
+}
+
+function formatOdds(price) {
+  if (!hasValue(price)) return "—";
+  var n = Number(price);
+  if (!isFinite(n)) return String(price);
+  return n > 0 ? "+" + n : String(n);
+}
+
+function normalizeConfidence(label) {
+  var s = String(label || "").toLowerCase();
+  if (s.indexOf("high") >= 0) return "High";
+  if (s.indexOf("medium") >= 0) return "Medium";
+  return "Low";
+}
+
+function removeUnverifiedLegacyRows(arr) {
+  if (!Array.isArray(arr)) return [];
+  return arr.filter(function(p) {
+    var hasFirstPitch = !!(p && p.rawCommenceTime);
+    if (hasFirstPitch) return true;
+    var archivedAt = p && p.archivedAt ? String(p.archivedAt) : "";
+    var savedAt = p && p.savedAt ? String(p.savedAt) : "";
+    var stamp = archivedAt || savedAt;
+    if (stamp.indexOf("2026-04-02") === 0) return false;
+    return true;
+  });
+}
+
+function getTrackedPicks() {
+  try {
+    var raw = localStorage.getItem(STORAGE_KEY);
+    var arr = raw ? JSON.parse(raw) : [];
+    arr = Array.isArray(arr) ? arr : [];
+    var cleaned = removeUnverifiedLegacyRows(arr).map(normalizeAnyArchiveRow).filter(function(r) { return !!r.bestBet; });
+    if (cleaned.length !== arr.length) localStorage.setItem(STORAGE_KEY, JSON.stringify(cleaned));
+    return cleaned;
+  } catch(e) { return []; }
+}
+
+function setTrackedPicks(arr) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(Array.isArray(arr) ? arr : []));
+}
+
+function getUnitSize() {
+  var stored = localStorage.getItem(UNIT_SIZE_KEY);
+  var n = Number(stored || document.getElementById("unitSize").value || 10);
+  return isFinite(n) && n > 0 ? n : 10;
+}
+function setUnitSize(n) { localStorage.setItem(UNIT_SIZE_KEY, String(n)); }
+function getSortOrder() { return localStorage.getItem(SORT_ORDER_KEY) === "asc" ? "asc" : "desc"; }
+function setSortOrder(value) { localStorage.setItem(SORT_ORDER_KEY, value === "asc" ? "asc" : "desc"); }
+
+function getDateFilter() {
+  var value = localStorage.getItem(TRACKER_DATE_FILTER_KEY) || "all";
+  return value === "today" || value === "tomorrow" ? value : "all";
+}
+
+function setDateFilter(value) {
+  localStorage.setItem(TRACKER_DATE_FILTER_KEY, value === "today" || value === "tomorrow" ? value : "all");
+}
+
+function getEtYmdFromDate(dateObj) {
+  try {
+    var parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/New_York",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).formatToParts(dateObj);
+
+    var y = parts.find(function(p) { return p.type === "year"; });
+    var m = parts.find(function(p) { return p.type === "month"; });
+    var d = parts.find(function(p) { return p.type === "day"; });
+
+    if (y && m && d) return y.value + "-" + m.value + "-" + d.value;
+  } catch (e) {}
+
+  return dateObj.toISOString().slice(0, 10);
+}
+
+function addDaysToYmd(ymd, days) {
+  var parts = String(ymd || "").split("-");
+  if (parts.length !== 3) return "";
+  var d = new Date(Date.UTC(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]) + Number(days || 0), 12, 0, 0));
+  return d.toISOString().slice(0, 10);
+}
+
+function gameEtYmd(pick) {
+  pick = normalizeAnyArchiveRow(pick || {});
+  if (!pick.rawCommenceTime) return "";
+  var d = new Date(pick.rawCommenceTime);
+  if (isNaN(d.getTime())) return "";
+  return getEtYmdFromDate(d);
+}
+
+function dateFilterLabel(value) {
+  if (value === "today") return "Today's Games";
+  if (value === "tomorrow") return "Tomorrow's Games";
+  return "All Games";
+}
+
+function applyTrackerDateFilter(picks) {
+  var filter = getDateFilter();
+  var arr = Array.isArray(picks) ? picks : [];
+
+  if (filter === "all") return arr;
+
+  var todayEt = getEtYmdFromDate(new Date());
+  var target = filter === "tomorrow" ? addDaysToYmd(todayEt, 1) : todayEt;
+
+  return arr.filter(function(p) {
+    return gameEtYmd(p) === target;
+  });
+}
+
+function updateDateFilterButtons() {
+  var active = getDateFilter();
+  var buttons = document.querySelectorAll(".date-filter-btn");
+  for (var i = 0; i < buttons.length; i++) {
+    if (buttons[i].getAttribute("data-date-filter") === active) buttons[i].classList.add("active");
+    else buttons[i].classList.remove("active");
+  }
+}
+
+function normalizeName(name) {
+  return String(name || "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function compactPersonName(name) {
+  return normalizeName(name).replace(/\b(jr|sr|ii|iii|iv|v)\b/g, "").replace(/\s+/g, "");
+}
+
+function lastNameKey(name) {
+  var parts = normalizeName(name).split(" ").filter(Boolean).filter(function(x) { return !/^(jr|sr|ii|iii|iv|v)$/.test(x); });
+  if (!parts.length) return "";
+  return parts[parts.length - 1];
+}
+
+function namesLikelyMatch(a, b) {
+  var an = normalizeName(a);
+  var bn = normalizeName(b);
+  if (!an || !bn) return false;
+  if (an === bn || an.indexOf(bn) >= 0 || bn.indexOf(an) >= 0) return true;
+  var ac = compactPersonName(an);
+  var bc = compactPersonName(bn);
+  if (ac && bc && (ac === bc || ac.indexOf(bc) >= 0 || bc.indexOf(ac) >= 0)) return true;
+  var al = lastNameKey(an);
+  var bl = lastNameKey(bn);
+  if (al && bl && al === bl) {
+    var af = an.charAt(0);
+    var bf = bn.charAt(0);
+    if (af && bf && af === bf) return true;
+  }
+  return false;
+}
+
+function normalizeText(value) {
+  return String(value || "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/&/g, "and")
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeTeam(name) {
+  var n = normalizeText(name);
+  var aliases = {
+    "ari diamondbacks": "arizona diamondbacks", "az diamondbacks": "arizona diamondbacks", "d backs": "arizona diamondbacks", "diamondbacks": "arizona diamondbacks",
+    "oakland athletics": "athletics", "sacramento athletics": "athletics", "a s": "athletics", "athletics": "athletics",
+    "atl braves": "atlanta braves", "braves": "atlanta braves",
+    "bal orioles": "baltimore orioles", "orioles": "baltimore orioles",
+    "bos red sox": "boston red sox", "red sox": "boston red sox",
+    "chi cubs": "chicago cubs", "chc": "chicago cubs", "cubs": "chicago cubs",
+    "chi white sox": "chicago white sox", "cws": "chicago white sox", "white sox": "chicago white sox",
+    "cin reds": "cincinnati reds", "reds": "cincinnati reds",
+    "cle guardians": "cleveland guardians", "guardians": "cleveland guardians",
+    "col rockies": "colorado rockies", "rockies": "colorado rockies",
+    "det tigers": "detroit tigers", "tigers": "detroit tigers",
+    "hou astros": "houston astros", "astros": "houston astros",
+    "kc royals": "kansas city royals", "kansas city": "kansas city royals", "royals": "kansas city royals",
+    "la angels": "los angeles angels", "los angeles angels of anaheim": "los angeles angels", "angels": "los angeles angels",
+    "la dodgers": "los angeles dodgers", "lad": "los angeles dodgers", "dodgers": "los angeles dodgers",
+    "mia marlins": "miami marlins", "marlins": "miami marlins",
+    "mil brewers": "milwaukee brewers", "brewers": "milwaukee brewers",
+    "min twins": "minnesota twins", "twins": "minnesota twins",
+    "ny mets": "new york mets", "nym": "new york mets", "mets": "new york mets",
+    "ny yankees": "new york yankees", "nyy": "new york yankees", "yankees": "new york yankees",
+    "phi phillies": "philadelphia phillies", "philadelphia": "philadelphia phillies", "phillies": "philadelphia phillies",
+    "pit pirates": "pittsburgh pirates", "pirates": "pittsburgh pirates",
+    "sd padres": "san diego padres", "padres": "san diego padres",
+    "sf giants": "san francisco giants", "giants": "san francisco giants",
+    "sea mariners": "seattle mariners", "mariners": "seattle mariners",
+    "st louis cardinals": "st louis cardinals", "stl cardinals": "st louis cardinals", "cardinals": "st louis cardinals",
+    "tb rays": "tampa bay rays", "tampa rays": "tampa bay rays", "rays": "tampa bay rays",
+    "tex rangers": "texas rangers", "rangers": "texas rangers",
+    "tor blue jays": "toronto blue jays", "blue jays": "toronto blue jays",
+    "wsh nationals": "washington nationals", "was nationals": "washington nationals", "nationals": "washington nationals"
+  };
+  return aliases[n] || n;
+}
+
+function getField(row, names, fallback) {
+  row = row || {};
+  for (var i = 0; i < names.length; i++) {
+    if (row[names[i]] !== undefined && row[names[i]] !== null && row[names[i]] !== "") return row[names[i]];
+  }
+  var wanted = names.map(function(x) { return normalizeText(x); });
+  for (var key in row) {
+    if (wanted.indexOf(normalizeText(key)) >= 0 && row[key] !== undefined && row[key] !== null && row[key] !== "") return row[key];
+  }
+  return fallback;
+}
+
+function normalizeArchiveKeyPart(value) {
+  return String(value == null ? "" : value).trim().replace(/\s+/g, " ");
+}
+
+function archiveTimeKey(value) {
+  if (!hasValue(value)) return "";
+  var d = new Date(value);
+  if (!isNaN(d.getTime())) return d.toISOString().slice(0, 16);
+  return String(value || "").slice(0, 16);
+}
+
+function inferPropArchiveViewMode(row) {
+  var text = [
+    row.viewMode || row.view_mode || "",
+    row.bestBet || row.best_bet || "",
+    row.bestBetType || row.best_bet_type || "",
+    row.marketKey || row.market_key || "",
+    row.propMarket || row.prop_market || "",
+    row.propSubType || row.prop_sub_type || "",
+    row.marketFamily || row.market_family || "",
+    row.playerName || row.player_name || ""
+  ].join(" | ").toLowerCase();
+
+  if (
+    text.indexOf("pitcher") >= 0 ||
+    text.indexOf("strikeout") >= 0 ||
+    text.indexOf("strikeouts") >= 0 ||
+    text.indexOf("outs") >= 0 ||
+    text.indexOf("earned runs") >= 0 ||
+    text.indexOf("pitcher_") >= 0
+  ) return "pitcher_props";
+
+  return "hitter_props";
+}
+
+function normalizeArchiveViewMode(row) {
+  row = row || {};
+  var raw = String(row.viewMode || row.view_mode || "").toLowerCase().trim();
+  var text = [
+    row.viewMode || row.view_mode || "",
+    row.bestBet || row.best_bet || "",
+    row.bestBetType || row.best_bet_type || "",
+    row.marketKey || row.market_key || "",
+    row.propMarket || row.prop_market || "",
+    row.propSubType || row.prop_sub_type || "",
+    row.marketFamily || row.market_family || "",
+    row.playerName || row.player_name || ""
+  ].join(" | ").toLowerCase();
+
+  if (raw === "pitcher_props") return "pitcher_props";
+  if (raw === "hitter_props") return "hitter_props";
+  if (raw === "props" || raw === "prop") return inferPropArchiveViewMode(row);
+
+  if (
+    text.indexOf("pitcher_") >= 0 ||
+    text.indexOf("pitcher strikeouts") >= 0 ||
+    text.indexOf("pitcher outs") >= 0 ||
+    text.indexOf("pitcher earned runs") >= 0
+  ) return "pitcher_props";
+
+  if (
+    text.indexOf("batter_") >= 0 ||
+    text.indexOf("total bases") >= 0 ||
+    text.indexOf("stolen bases") >= 0 ||
+    text.indexOf("hits + runs + rbis") >= 0 ||
+    text.indexOf("home runs") >= 0 ||
+    text.indexOf("runs scored") >= 0 ||
+    text.indexOf("walks") >= 0 ||
+    text.indexOf("singles") >= 0 ||
+    text.indexOf("doubles") >= 0 ||
+    text.indexOf("triples") >= 0
+  ) return "hitter_props";
+
+  if (
+    raw === "f5" ||
+    text.indexOf(" f5 ") >= 0 ||
+    text.indexOf("f5 ") === 0 ||
+    text.indexOf("f5 moneyline") >= 0 ||
+    text.indexOf("f5 run line") >= 0 ||
+    text.indexOf("f5 total") >= 0
+  ) return "f5";
+
+  return "full";
+}
+
+function canonicalArchiveKeyForValues(eventId, rawCommenceTime, viewMode, away, home, row) {
+  var normalizedView = normalizeArchiveViewMode(Object.assign({}, row || {}, { viewMode: viewMode }));
+  var startKey = archiveTimeKey(rawCommenceTime);
+  var awayKey = normalizeTeam(away || "");
+  var homeKey = normalizeTeam(home || "");
+
+  if (awayKey && homeKey && startKey && normalizedView) {
+    return ["gameview", normalizeArchiveKeyPart(awayKey), normalizeArchiveKeyPart(homeKey), startKey, normalizedView].join("|");
+  }
+
+  if (hasValue(eventId) && startKey && normalizedView) {
+    return ["eventview", normalizeArchiveKeyPart(eventId), startKey, normalizedView].join("|");
+  }
+
+  return "";
+}
+
+function archiveKey(p) {
+  p = p || {};
+  var canonical = canonicalArchiveKeyForValues(
+    p.eventId || p.event_id || "",
+    p.rawCommenceTime || p.raw_commence_time || "",
+    p.viewMode || p.view_mode || "",
+    p.away || "",
+    p.home || "",
+    p
+  );
+  if (canonical) return canonical;
+  return p.archiveId || p.archive_id || [p.eventId || "", p.rawCommenceTime || "", p.bestBet || "", p.bestBetType || ""].join("|");
+}
+
+function normalizeAnyArchiveRow(r) {
+  r = r || {};
+  var rawCommenceTime = getField(r, ["rawCommenceTime", "raw_commence_time", "Commencement time", "Commence Time", "Game Time", "First Pitch", "First Pitch (ET)"], "");
+  var bestBet = getField(r, ["bestBet", "best_bet", "Best Bet", "Pick", "Selection"], "");
+  var bestBetType = getField(r, ["bestBetType", "best_bet_type", "Best Bet Type", "Type", "Market", "Bet Type"], "");
+  var eventId = getField(r, ["eventId", "event_id", "Event ID", "Game ID"], "");
+  var viewModeRaw = getField(r, ["viewMode", "view_mode", "View Mode", "Mode"], "");
+  var incomingArchiveId = getField(r, ["archiveId", "archive_id", "Archive ID"], "");
+  var away = getField(r, ["away", "Away", "Away Team"], "");
+  var home = getField(r, ["home", "Home", "Home Team"], "");
+  var matchup = getField(r, ["matchup", "Matchup", "Game"], "") || ((away || "") + " @ " + (home || "")).trim();
+
+  if ((!away || !home) && matchup && matchup.indexOf(" @ ") > 0) {
+    var parts = matchup.split(" @ ");
+    away = away || parts[0].trim();
+    home = home || parts.slice(1).join(" @ ").trim();
+  }
+
+  var viewMode = normalizeArchiveViewMode({
+    viewMode: viewModeRaw,
+    bestBet: bestBet,
+    bestBetType: bestBetType,
+    away: away,
+    home: home
+  });
+  var archiveId = canonicalArchiveKeyForValues(eventId, rawCommenceTime, viewMode, away, home, {
+    viewMode: viewMode,
+    bestBet: bestBet,
+    bestBetType: bestBetType,
+    away: away,
+    home: home
+  }) || incomingArchiveId || [eventId, rawCommenceTime, bestBet, bestBetType].join("|");
+
+  var scoreValue = getField(r, ["score", "Score", "confidenceScore", "Confidence Score", "pickScore"], null);
+  var oddsValue = getField(r, ["oddsPrice", "odds_price", "Odds", "Price", "Line Price"], null);
+  var netUnitsValue = getField(r, ["netUnits", "net_units", "Units", "Net Units"], null);
+  var profitValue = getField(r, ["profitDollars", "profit_dollars", "Profit ($)", "Profit Dollars", "Net Profit"], null);
+
+  return {
+    archiveId: archiveId,
+    archivedAt: getField(r, ["archivedAt", "archived_at", "savedAt", "Saved At", "Archived At"], new Date().toISOString()),
+    source: getField(r, ["source", "Source"], "Shared archive"),
+    eventId: eventId,
+    rawCommenceTime: rawCommenceTime,
+    away: away,
+    home: home,
+    matchup: matchup,
+    bestBet: bestBet,
+    bestBetType: bestBetType,
+    viewMode: viewMode,
+    confidence: normalizeConfidence(getField(r, ["confidence", "Confidence"], "Low")),
+    score: hasValue(scoreValue) ? Number(scoreValue) : null,
+    oddsPrice: hasValue(oddsValue) ? Number(String(oddsValue).replace(/[^0-9+.-]/g, "")) : null,
+    moneyline: getField(r, ["moneyline", "Moneyline", "Moneyline / F5 ML"], ""),
+    total: getField(r, ["total", "Total", "Total / F5 Total"], ""),
+    runLine: getField(r, ["runLine", "run_line", "Run Line", "Run Line / F5 RL"], ""),
+    resultStatus: getField(r, ["resultStatus", "result_status", "Status", "Result Status"], "Pending"),
+    resultDetail: getField(r, ["resultDetail", "result_detail", "Result Detail"], ""),
+    grade: getField(r, ["grade", "Grade", "Result"], ""),
+    netUnits: hasValue(netUnitsValue) ? Number(netUnitsValue) : null,
+    profitDollars: hasValue(profitValue) ? Number(String(profitValue).replace(/[^0-9+.-]/g, "")) : null
+  };
+}
+
+function pickToSharedPayload(pick) {
+  var p = normalizeAnyArchiveRow(pick);
+  return {
+    archive_id: p.archiveId,
+    archived_at: p.archivedAt || new Date().toISOString(),
+    event_id: p.eventId || "",
+    raw_commence_time: p.rawCommenceTime || null,
+    away: p.away || "",
+    home: p.home || "",
+    matchup: p.matchup || "",
+    best_bet: p.bestBet || "",
+    best_bet_type: p.bestBetType || "",
+    view_mode: p.viewMode || "",
+    confidence: p.confidence || "",
+    score: hasValue(p.score) ? Number(p.score) : null,
+    odds_price: hasValue(p.oddsPrice) ? Number(p.oddsPrice) : null,
+    result_status: p.resultStatus || "Pending",
+    grade: p.grade || "",
+    result_detail: p.resultDetail || "",
+    net_units: hasValue(p.netUnits) ? Number(p.netUnits) : null,
+    profit_dollars: hasValue(p.profitDollars) ? Number(p.profitDollars) : null,
+    source: p.source || "Archive"
+  };
+}
+
+async function savePickToSharedStore(pick) {
+  var payload = pickToSharedPayload(pick);
+  if (!payload.archive_id || !payload.best_bet) return false;
+  try {
+    var res = await fetch("/api/archive-save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    return !!res.ok;
+  } catch (e) { return false; }
+}
+
+async function deletePicksFromSharedStore(picks) {
+  var archiveIds = (Array.isArray(picks) ? picks : [])
+    .map(function(p) { return normalizeAnyArchiveRow(p).archiveId; })
+    .filter(function(id, idx, arr) { return id && arr.indexOf(id) === idx; });
+
+  if (!archiveIds.length) return 0;
+
+  try {
+    var res = await fetch("/api/archive-delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ archive_ids: archiveIds })
+    });
+    var data = await res.json().catch(function() { return {}; });
+    if (!res.ok || !data || data.ok === false) return 0;
+    return Number(data.deletedCount || archiveIds.length || 0);
+  } catch (e) {
+    return 0;
+  }
+}
+
+function shouldRemoveAsPostponed(statusText) {
+  var s = String(statusText || "").toLowerCase();
+  // Postponed/canceled games do not produce final scores or prop stats, so they should not stay in the betting-performance archive.
+  // Suspended games are intentionally NOT removed here because MLB can resume/complete them later.
+  return /postponed|cancelled|canceled/.test(s);
+}
+
+async function savePicksToSharedStore(picks) {
+  var arr = Array.isArray(picks) ? picks : [];
+  var ok = 0;
+  for (var i = 0; i < arr.length; i++) {
+    if (await savePickToSharedStore(arr[i])) ok += 1;
+  }
+  return ok;
+}
+
+function rowQualityScore(p) {
+  var score = 0;
+  if (!p) return score;
+  if (p.grade === "Win" || p.grade === "Loss" || p.grade === "Push") score += 1000000;
+  if (p.resultStatus && p.resultStatus !== "Pending") score += 10000;
+  if (hasValue(p.score)) score += 1000;
+  if (hasValue(p.oddsPrice)) score += 100;
+  var archived = new Date(p.archivedAt || 0).getTime();
+  if (isFinite(archived)) score += Math.min(archived / 1000000000000, 999);
+  return score;
+}
+
+function dedupeMerge(existing, imported) {
+  var map = {};
+  existing.concat(imported).map(normalizeAnyArchiveRow).forEach(function(p) {
+    if (!p.bestBet) return;
+    var key = archiveKey(p);
+    if (!key) return;
+    p.archiveId = key;
+    var current = map[key];
+    if (!current) {
+      map[key] = p;
+    } else {
+      var merged = Object.assign({}, current, p);
+      // Preserve completed grading even if a later dashboard visit overwrote the pick metadata.
+      if (current.grade === "Win" || current.grade === "Loss" || current.grade === "Push") {
+        merged.grade = current.grade;
+        merged.resultStatus = current.resultStatus;
+        merged.resultDetail = current.resultDetail;
+        merged.netUnits = current.netUnits;
+        merged.profitDollars = current.profitDollars;
+      }
+      map[key] = rowQualityScore(merged) >= rowQualityScore(current) ? merged : current;
+    }
+    if (!hasValue(map[key].matchup)) map[key].matchup = ((map[key].away || "") + " @ " + (map[key].home || "")).trim();
+  });
+  return Object.keys(map).map(function(k) { return map[k]; });
+}
+
+function americanToProfitPerUnit(price) {
+  if (!hasValue(price)) return null;
+  var n = Number(price);
+  if (!isFinite(n)) return null;
+  return n > 0 ? n / 100 : 100 / Math.abs(n);
+}
+
+function parseBetOddsFromText(text) {
+  var m = String(text || "").match(/([+-]\d{3,4})/);
+  return m ? Number(m[1]) : null;
+}
+
+function escapeRegExp(value) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function inferPriceFromPick(pick) {
+  pick = pick || {};
+  if (hasValue(pick.oddsPrice)) return Number(pick.oddsPrice);
+
+  var bestBet = String(pick.bestBet || "");
+  var f5 = isF5Pick(pick);
+  var moneylineText = f5 ? String(pick.firstFiveMoneyline || pick.moneyline || "") : String(pick.moneyline || "");
+  var totalText = f5 ? String(pick.firstFiveTotal || pick.total || "") : String(pick.total || "");
+  var runLineText = f5 ? String(pick.firstFiveRunLine || pick.runLine || "") : String(pick.runLine || "");
+
+  if (isMoneylinePick(pick)) {
+    if ((bestBet || "").indexOf((pick.away || "") + " ML") === 0 || (bestBet || "").indexOf((pick.away || "") + " F5 ML") === 0) {
+      var m1 = moneylineText.match(new RegExp(escapeRegExp(pick.away) + "\\s+([+-]\\d+)"));
+      return m1 ? Number(m1[1]) : null;
+    }
+    if ((bestBet || "").indexOf((pick.home || "") + " ML") === 0 || (bestBet || "").indexOf((pick.home || "") + " F5 ML") === 0) {
+      var m2 = moneylineText.match(new RegExp(escapeRegExp(pick.home) + "\\s+([+-]\\d+)"));
+      return m2 ? Number(m2[1]) : null;
+    }
+  }
+
+  if (isTotalPick(pick)) return parseBetOddsFromText(totalText);
+  if (isRunLinePick(pick)) return parseBetOddsFromText(runLineText);
+  return null;
+}
+
+function resolveOddsPrice(pick) {
+  var n = inferPriceFromPick(pick || {});
+  return isFinite(Number(n)) ? Number(n) : null;
+}
+
+function calcNetUnits(pick) {
+  if (pick.grade === "Win") {
+    var price = resolveOddsPrice(pick);
+    var profitPerUnit = americanToProfitPerUnit(price);
+    return profitPerUnit != null ? Number(profitPerUnit.toFixed(2)) : 1.00;
+  }
+  if (pick.grade === "Loss") return -1.00;
+  if (pick.grade === "Push") return 0.00;
+  return null;
+}
+
+function calcProfitDollars(units) {
+  if (units === null || units === undefined || !isFinite(units)) return null;
+  return Number((units * getUnitSize()).toFixed(2));
+}
+
+function getGameDateEt(rawIso) {
+  try { return new Date(rawIso).toLocaleDateString("en-CA", { timeZone: "America/New_York" }); }
+  catch(e) { return null; }
+}
+
+async function fetchScheduleForDate(dateEt) {
+  var url = "https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=" + encodeURIComponent(dateEt);
+  var res = await fetch(url);
+  if (!res.ok) throw new Error("Schedule fetch failed");
+  return res.json();
+}
+
+async function fetchBoxscore(gamePk) {
+  var url = "https://statsapi.mlb.com/api/v1/game/" + gamePk + "/boxscore";
+  var res = await fetch(url);
+  if (!res.ok) throw new Error("Boxscore fetch failed");
+  return res.json();
+}
+
+async function fetchLinescore(gamePk) {
+  var url = "https://statsapi.mlb.com/api/v1/game/" + gamePk + "/linescore";
+  var res = await fetch(url);
+  if (!res.ok) throw new Error("Linescore fetch failed");
+  return res.json();
+}
+
+function findMatchingGame(scheduleJson, pick) {
+  var dates = Array.isArray(scheduleJson.dates) ? scheduleJson.dates : [];
+  var candidates = [];
+  var targetAway = normalizeTeam(pick.away);
+  var targetHome = normalizeTeam(pick.home);
+  var targetTime = pick.rawCommenceTime ? new Date(pick.rawCommenceTime).getTime() : NaN;
+
+  for (var i = 0; i < dates.length; i++) {
+    var games = Array.isArray(dates[i].games) ? dates[i].games : [];
+    for (var j = 0; j < games.length; j++) {
+      var g = games[j];
+      var away = normalizeTeam(g.teams && g.teams.away && g.teams.away.team && g.teams.away.team.name);
+      var home = normalizeTeam(g.teams && g.teams.home && g.teams.home.team && g.teams.home.team.name);
+      if (away === targetAway && home === targetHome) candidates.push(g);
+    }
+  }
+
+  if (!candidates.length) return null;
+  if (candidates.length === 1 || !isFinite(targetTime)) return candidates[0];
+
+  candidates.sort(function(a, b) {
+    var at = new Date(a.gameDate || 0).getTime();
+    var bt = new Date(b.gameDate || 0).getTime();
+    return Math.abs(at - targetTime) - Math.abs(bt - targetTime);
+  });
+  return candidates[0];
+}
+
+function parseProp(pick) {
+  var text = String(pick.bestBet || "").replace(/\s+/g, " ").trim();
+  var marketPattern = "Pitcher Strikeouts|Pitcher Outs|Pitcher Earned Runs|Hits \\+ Runs \\+ RBIs|Hits Runs RBIs|HRR|Total Bases|Home Runs|Runs Scored|Stolen Bases|RBIs|RBI|Walks|Singles|Doubles|Triples|Hits";
+  var m = text.match(new RegExp("^(.*?)\\s+(" + marketPattern + ")\\s+(Over|Under)\\s+(\\d+(?:\\.\\d+)?)$", "i"));
+  if (!m) return null;
+  var market = m[2].trim().toLowerCase();
+  if (market === "rbi") market = "rbis";
+  if (market === "hits runs rbis" || market === "hrr") market = "hits + runs + rbis";
+  return { player: m[1].trim(), market: market, side: m[3].trim().toLowerCase(), line: Number(m[4]) };
+}
+
+function inningsToOuts(ip) {
+  if (ip == null) return null;
+  var s = String(ip), parts = s.split(".");
+  return Number(parts[0] || 0) * 3 + Number(parts[1] || 0);
+}
+
+function totalBasesFromBatting(stats) {
+  var hits = Number(stats.hits || 0), doubles = Number(stats.doubles || 0), triples = Number(stats.triples || 0), hr = Number(stats.homeRuns || 0);
+  return hits + doubles + (2 * triples) + (3 * hr);
+}
+
+function findPlayerStatsInBoxscore(boxscore, playerName) {
+  var teams = [boxscore.teams && boxscore.teams.away, boxscore.teams && boxscore.teams.home];
+  var fallbackLastName = null;
+  var targetLast = lastNameKey(playerName);
+
+  for (var t = 0; t < teams.length; t++) {
+    var players = teams[t] && teams[t].players ? teams[t].players : {};
+    for (var key in players) {
+      var p = players[key];
+      var fullName = p && p.person && p.person.fullName;
+      if (namesLikelyMatch(fullName, playerName)) return p;
+      if (!fallbackLastName && targetLast && lastNameKey(fullName) === targetLast) fallbackLastName = p;
+    }
+  }
+  return fallbackLastName;
+}
+
+function hasStatObject(stats) {
+  return !!(stats && typeof stats === "object" && Object.keys(stats).length);
+}
+
+function gradePropFromBoxscore(pick, boxscore) {
+  var parsed = parseProp(pick);
+  if (!parsed) { pick.resultStatus = "Pending Prop Grading"; pick.resultDetail = "Unsupported prop parser"; return pick; }
+  var player = findPlayerStatsInBoxscore(boxscore, parsed.player);
+  if (!player) {
+    pick.resultStatus = "Final";
+    pick.grade = "Push";
+    pick.resultDetail = parsed.player + " not found in boxscore; treated as void/push";
+    pick.oddsPrice = resolveOddsPrice(pick);
+    pick.netUnits = calcNetUnits(pick);
+    pick.profitDollars = calcProfitDollars(pick.netUnits);
+    return pick;
+  }
+
+  var batting = player.stats && player.stats.batting ? player.stats.batting : {};
+  var pitching = player.stats && player.stats.pitching ? player.stats.pitching : {};
+  var actual = null;
+
+  if (parsed.market.indexOf("pitcher ") === 0 && !hasStatObject(pitching)) {
+    pick.resultStatus = "Final";
+    pick.grade = "Push";
+    pick.resultDetail = parsed.player + " did not record pitching stats; treated as void/push";
+    pick.oddsPrice = resolveOddsPrice(pick);
+    pick.netUnits = calcNetUnits(pick);
+    pick.profitDollars = calcProfitDollars(pick.netUnits);
+    return pick;
+  }
+
+  if (parsed.market.indexOf("pitcher ") !== 0 && !hasStatObject(batting)) {
+    pick.resultStatus = "Final";
+    pick.grade = "Push";
+    pick.resultDetail = parsed.player + " did not record batting stats; treated as void/push";
+    pick.oddsPrice = resolveOddsPrice(pick);
+    pick.netUnits = calcNetUnits(pick);
+    pick.profitDollars = calcProfitDollars(pick.netUnits);
+    return pick;
+  }
+
+  if (parsed.market === "pitcher strikeouts") actual = Number(pitching.strikeOuts || 0);
+  else if (parsed.market === "pitcher outs") actual = inningsToOuts(pitching.inningsPitched);
+  else if (parsed.market === "pitcher earned runs") actual = Number(pitching.earnedRuns || 0);
+  else if (parsed.market === "hits") actual = Number(batting.hits || 0);
+  else if (parsed.market === "total bases") actual = totalBasesFromBatting(batting);
+  else if (parsed.market === "home runs") actual = Number(batting.homeRuns || 0);
+  else if (parsed.market === "rbis") actual = Number(batting.rbi || 0);
+  else if (parsed.market === "runs scored") actual = Number(batting.runs || 0);
+  else if (parsed.market === "hits + runs + rbis") actual = Number(batting.hits || 0) + Number(batting.runs || 0) + Number(batting.rbi || 0);
+  else if (parsed.market === "walks") actual = Number(batting.baseOnBalls || 0);
+  else if (parsed.market === "singles") actual = Math.max(0, Number(batting.hits || 0) - Number(batting.doubles || 0) - Number(batting.triples || 0) - Number(batting.homeRuns || 0));
+  else if (parsed.market === "doubles") actual = Number(batting.doubles || 0);
+  else if (parsed.market === "triples") actual = Number(batting.triples || 0);
+  else if (parsed.market === "stolen bases") actual = Number(batting.stolenBases || 0);
+
+  if (actual == null || !isFinite(actual)) {
+    pick.resultStatus = "Final";
+    pick.grade = "Push";
+    pick.resultDetail = parsed.player + " relevant stat unavailable; treated as void/push";
+    pick.oddsPrice = resolveOddsPrice(pick);
+    pick.netUnits = calcNetUnits(pick);
+    pick.profitDollars = calcProfitDollars(pick.netUnits);
+    return pick;
+  }
+
+  pick.resultStatus = "Final";
+  pick.grade = parsed.side === "over" ? (actual > parsed.line ? "Win" : (actual === parsed.line ? "Push" : "Loss")) : (actual < parsed.line ? "Win" : (actual === parsed.line ? "Push" : "Loss"));
+  pick.resultDetail = parsed.player + " " + parsed.market + " = " + actual;
+  pick.oddsPrice = resolveOddsPrice(pick);
+  pick.netUnits = calcNetUnits(pick);
+  pick.profitDollars = calcProfitDollars(pick.netUnits);
+  return pick;
+}
+
+function isF5Pick(pick) {
+  return /(^F5\s|\sF5\s|F5$)/i.test(String(pick.bestBet || "")) || /^F5/i.test(String(pick.bestBetType || "")) || String(pick.viewMode || "").toLowerCase() === "f5";
+}
+
+function getF5Score(linescore) {
+  var innings = Array.isArray(linescore && linescore.innings) ? linescore.innings : [];
+  if (innings.length < 5) return null;
+  var away = 0, home = 0;
+  for (var i = 0; i < Math.min(5, innings.length); i++) {
+    away += Number(innings[i] && innings[i].away && innings[i].away.runs || 0);
+    home += Number(innings[i] && innings[i].home && innings[i].home.runs || 0);
+  }
+  return { away: away, home: home };
+}
+
+function selectedTeamSideFromBestBet(pick) {
+  var text = normalizeText(pick.bestBet || "");
+  var awayText = normalizeText(pick.away || "");
+  var homeText = normalizeText(pick.home || "");
+  if (awayText && text.indexOf(awayText) === 0) return "away";
+  if (homeText && text.indexOf(homeText) === 0) return "home";
+  return null;
+}
+
+function parseRunLineFromBestBet(pick) {
+  var text = String(pick.bestBet || "");
+  var side = selectedTeamSideFromBestBet(pick);
+  var m = text.match(/(?:^|\s)([+-]\d+(?:\.\d+)?)(?!\d)/);
+  if (!side || !m) return null;
+  return { isAway: side === "away", line: Number(m[1]) };
+}
+
+function parseTotalLineFromBestBet(pick) {
+  var text = String(pick.bestBet || "");
+  var m = text.match(/\b(?:F5\s+)?(?:Over|Under)\s+(\d+(?:\.\d+)?)/i);
+  return m ? Number(m[1]) : null;
+}
+
+function isMoneylinePick(pick) {
+  return /\bML$/i.test(String(pick.bestBet || "")) || /moneyline/i.test(String(pick.bestBetType || ""));
+}
+
+function isTotalPick(pick) {
+  return /\b(?:Over|Under)\s+\d/i.test(String(pick.bestBet || "")) || /total/i.test(String(pick.bestBetType || ""));
+}
+
+function isRunLinePick(pick) {
+  return /run\s*line/i.test(String(pick.bestBetType || "")) || !!parseRunLineFromBestBet(pick);
+}
+
+function gradePickFromGame(pick, game, boxscore, linescore) {
+  pick = normalizeAnyArchiveRow(pick);
+  var status = game.status && game.status.detailedState ? String(game.status.detailedState) : "Unknown";
+  var abstractState = game.status && game.status.abstractGameState ? String(game.status.abstractGameState) : "";
+  var codedState = game.status && game.status.statusCode ? String(game.status.statusCode) : "";
+  var isFinal = /final|completed early|game over/i.test(status) || /final/i.test(abstractState) || codedState === "F" || codedState === "O";
+  var isCancelled = /cancelled|canceled|postponed|suspended/i.test(status);
+
+  if (isCancelled) { pick.resultStatus = status; pick.grade = ""; pick.resultDetail = "Game did not finish normally"; pick.netUnits = null; pick.profitDollars = null; return pick; }
+  if (!isFinal) { pick.resultStatus = status; pick.grade = ""; pick.resultDetail = ""; pick.netUnits = null; pick.profitDollars = null; return pick; }
+
+  var type = String(pick.bestBetType || "").toLowerCase();
+  if (type === "prop" || /prop/.test(type) || parseProp(pick)) return gradePropFromBoxscore(pick, boxscore || {});
+
+  var f5 = isF5Pick(pick);
+  var f5Score = f5 ? getF5Score(linescore || {}) : null;
+  var away = f5 && f5Score ? f5Score.away : Number(game.teams.away.score || 0);
+  var home = f5 && f5Score ? f5Score.home : Number(game.teams.home.score || 0);
+  if (f5 && !f5Score) { pick.resultStatus = "Final"; pick.grade = ""; pick.resultDetail = "F5 linescore unavailable after final"; pick.netUnits = null; pick.profitDollars = null; return pick; }
+
+  var totalRuns = away + home;
+  var bestBet = String(pick.bestBet || "");
+  var detail = (f5 ? "F5 " : "") + away + "-" + home;
+  pick.resultStatus = "Final";
+
+  if (isMoneylinePick(pick)) {
+    var selectedSide = selectedTeamSideFromBestBet(pick);
+    if (!selectedSide) {
+      pick.grade = "";
+      pick.resultDetail = detail + " — could not identify ML team";
+    } else if (away === home) {
+      pick.grade = "Push";
+      pick.resultDetail = detail;
+    } else {
+      var selectedWon = selectedSide === "away" ? away > home : home > away;
+      pick.grade = selectedWon ? "Win" : "Loss";
+      pick.resultDetail = detail;
+    }
+  } else if (isTotalPick(pick)) {
+    var line = parseTotalLineFromBestBet(pick);
+    if (!isFinite(line)) { pick.grade = ""; pick.resultDetail = detail + " — could not parse total line"; }
+    else {
+      pick.grade = /\bOver\b/i.test(bestBet) ? (totalRuns > line ? "Win" : (totalRuns === line ? "Push" : "Loss")) : (totalRuns < line ? "Win" : (totalRuns === line ? "Push" : "Loss"));
+      pick.resultDetail = detail + " total=" + totalRuns;
+    }
+  } else if (isRunLinePick(pick)) {
+    var parsedRunLine = parseRunLineFromBestBet(pick);
+    if (parsedRunLine) {
+      var margin = parsedRunLine.isAway ? (away - home + parsedRunLine.line) : (home - away + parsedRunLine.line);
+      pick.grade = margin > 0 ? "Win" : (margin === 0 ? "Push" : "Loss");
+      pick.resultDetail = detail;
+    } else {
+      pick.grade = "";
+      pick.resultDetail = detail + " — could not parse run line";
+    }
+  } else {
+    pick.resultStatus = "Final";
+    pick.grade = "";
+    pick.resultDetail = detail + " — unsupported bet text: " + bestBet;
+    pick.netUnits = null;
+    pick.profitDollars = null;
+    return pick;
+  }
+
+  if (pick.grade === "Win" || pick.grade === "Loss" || pick.grade === "Push") {
+    pick.oddsPrice = resolveOddsPrice(pick);
+    pick.netUnits = calcNetUnits(pick);
+    pick.profitDollars = calcProfitDollars(pick.netUnits);
+  } else {
+    pick.netUnits = null;
+    pick.profitDollars = null;
+  }
+  return pick;
+}
+
+async function refreshGrades(autoMode) {
+  var picks = getTrackedPicks();
+  if (!picks.length) { render([]); return; }
+  if (!autoMode) flash("Refreshing grades...");
+
+  var datesNeeded = {};
+  picks.forEach(function(p) {
+    if (p.rawCommenceTime) {
+      var d = getGameDateEt(p.rawCommenceTime);
+      if (d) datesNeeded[d] = true;
+    }
+  });
+
+  var scheduleCache = {}, boxscoreCache = {}, linescoreCache = {}, dateKeys = Object.keys(datesNeeded);
+
+  for (var i = 0; i < dateKeys.length; i++) {
+    try { scheduleCache[dateKeys[i]] = await fetchScheduleForDate(dateKeys[i]); } catch(e) {}
+  }
+
+  var updated = [];
+  var removedPostponed = [];
+
+  for (var k = 0; k < picks.length; k++) {
+    var out = normalizeAnyArchiveRow(Object.assign({}, picks[k]));
+
+    if (shouldRemoveAsPostponed(out.resultStatus)) {
+      out.resultDetail = out.resultDetail || "Removed from tracker because game was " + out.resultStatus + ".";
+      out.netUnits = null;
+      out.profitDollars = null;
+      removedPostponed.push(out);
+      continue;
+    }
+
+    var dateKey = out.rawCommenceTime ? getGameDateEt(out.rawCommenceTime) : null;
+    var schedule = dateKey ? scheduleCache[dateKey] : null;
+    var game = schedule ? findMatchingGame(schedule, out) : null;
+
+    if (game) {
+      var status = game.status && game.status.detailedState ? String(game.status.detailedState) : "Unknown";
+      var abstractState = game.status && game.status.abstractGameState ? String(game.status.abstractGameState) : "";
+      var statusBundle = status + " " + abstractState;
+
+      if (shouldRemoveAsPostponed(statusBundle)) {
+        out.resultStatus = status;
+        out.grade = "";
+        out.resultDetail = "Removed from tracker because game was " + status + ".";
+        out.netUnits = null;
+        out.profitDollars = null;
+        removedPostponed.push(out);
+        continue;
+      }
+
+      var gamePk = game.gamePk;
+      if (!boxscoreCache[gamePk]) { try { boxscoreCache[gamePk] = await fetchBoxscore(gamePk); } catch(e) { boxscoreCache[gamePk] = null; } }
+      if (!linescoreCache[gamePk]) { try { linescoreCache[gamePk] = await fetchLinescore(gamePk); } catch(e) { linescoreCache[gamePk] = null; } }
+      updated.push(gradePickFromGame(out, game, boxscoreCache[gamePk] || {}, linescoreCache[gamePk] || {}));
+    } else {
+      updated.push(out);
+    }
+  }
+
+  setTrackedPicks(updated);
+  render(updated);
+
+  var deleted = await deletePicksFromSharedStore(removedPostponed);
+  var synced = await savePicksToSharedStore(updated);
+  var removeText = removedPostponed.length ? " Removed " + removedPostponed.length + " postponed/canceled row" + (removedPostponed.length === 1 ? "" : "s") + " from tracker" + (deleted ? " and shared archive" : "") + "." : "";
+  flash((autoMode ? "Auto-grading complete. " : "Grades refreshed. ") + "Synced " + synced + " rows to shared archive." + removeText);
+}
+
+function normalizeImportedRow(r) { return normalizeAnyArchiveRow(r); }
+
+
+function getEtDateString(rawIso) {
+  if (!rawIso) return "";
+  try {
+    var d = new Date(rawIso);
+    if (isNaN(d.getTime())) return "";
+    return d.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+  } catch (e) {
+    return "";
+  }
+}
+
+function todayEtString() {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+}
+
+function isPendingOrPregamePick(pick) {
+  var p = normalizeAnyArchiveRow(pick);
+  var status = String(p.resultStatus || "Pending").toLowerCase();
+  var grade = String(p.grade || "").trim();
+  if (grade === "Win" || grade === "Loss" || grade === "Push" || grade === "Tie") return false;
+  return !grade && (
+    !status ||
+    status === "pending" ||
+    status.indexOf("scheduled") >= 0 ||
+    status.indexOf("pre-game") >= 0 ||
+    status.indexOf("pregame") >= 0 ||
+    status.indexOf("preview") >= 0 ||
+    status.indexOf("warmup") >= 0
+  );
+}
+
+function isTodayPendingPick(pick) {
+  var p = normalizeAnyArchiveRow(pick);
+  return getEtDateString(p.rawCommenceTime) === todayEtString() && isPendingOrPregamePick(p);
+}
+
+async function fetchSharedArchiveRows() {
+  var res = await fetch("/api/archive-list", { cache: "no-store" });
+  var data = await res.json().catch(function() { return {}; });
+  if (!res.ok || !data || data.ok === false || !Array.isArray(data.rows)) {
+    throw new Error((data && data.error) || "Shared archive load failed");
+  }
+  return data.rows.map(normalizeAnyArchiveRow).filter(function(r) { return !!r.bestBet; });
+}
+
+async function clearSharedArchiveStore(reason) {
+  var res = await fetch("/api/archive-clear", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ confirm: "CLEAR_SHARED_ARCHIVE", reason: reason || "tracker_requested_clear" })
+  });
+  var data = await res.json().catch(function() { return {}; });
+  if (!res.ok || !data || data.ok === false) {
+    throw new Error((data && data.error) || "Shared archive clear failed");
+  }
+  return data;
+}
+
+async function removeTodaysPendingPicks() {
+  setSharedStatus("Removing today's pending/pre-game picks from shared archive...");
+  try {
+    var sharedRows;
+    try {
+      sharedRows = await fetchSharedArchiveRows();
+    } catch (e) {
+      sharedRows = getTrackedPicks();
+    }
+
+    var toRemove = sharedRows.filter(isTodayPendingPick);
+    if (!toRemove.length) {
+      setSharedStatus("No today's pending/pre-game picks found to remove.");
+      flash("No today's pending picks found");
+      return;
+    }
+
+    var confirmed = window.confirm("Remove " + toRemove.length + " pending/pre-game pick(s) for today's games from the shared archive?");
+    if (!confirmed) {
+      setSharedStatus("Today's pending cleanup canceled.");
+      return;
+    }
+
+    var deleted = await deletePicksFromSharedStore(toRemove);
+    var remaining = sharedRows.filter(function(p) { return !isTodayPendingPick(p); });
+    remaining = dedupeMerge([], remaining);
+    setTrackedPicks(remaining);
+    render(remaining);
+    setSharedStatus("Removed " + toRemove.length + " today's pending rows. Shared deleted count: " + deleted + ".");
+    flash("Today's pending picks removed");
+  } catch (err) {
+    setSharedStatus("Remove today's pending picks failed: " + err.message);
+    flash("Remove failed");
+  }
+}
+
+async function clearSharedArchiveNow() {
+  var confirmed = window.confirm("This will delete ALL shared Supabase archive rows. Historical tracker data will be gone from the shared database unless you re-import it. Continue?");
+  if (!confirmed) return;
+
+  var confirmedAgain = window.confirm("Final confirmation: clear the shared Supabase archive now?");
+  if (!confirmedAgain) return;
+
+  setSharedStatus("Clearing shared archive...");
+  try {
+    var data = await clearSharedArchiveStore("manual_clear_from_tracker");
+    setTrackedPicks([]);
+    render([]);
+    setSharedStatus("Shared archive cleared. Deleted rows: " + Number(data.deletedCount || 0) + ".");
+    flash("Shared archive cleared");
+  } catch (err) {
+    setSharedStatus("Shared archive clear failed: " + err.message);
+    flash("Shared clear failed");
+  }
+}
+
+function rowsFromWorkbookFile(file, callback) {
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var data = new Uint8Array(e.target.result);
+      var wb = XLSX.read(data, { type: "array" });
+      var rows = [];
+      wb.SheetNames.forEach(function(name) {
+        rows = rows.concat(XLSX.utils.sheet_to_json(wb.Sheets[name], { defval: "" }));
+      });
+      var imported = rows.map(normalizeImportedRow).filter(function(r) { return r.bestBet; });
+      callback(null, imported);
+    } catch (err) {
+      callback(err);
+    }
+  };
+  reader.onerror = function() { callback(new Error("Could not read file")); };
+  reader.readAsArrayBuffer(file);
+}
+
+function replaceSharedArchiveWithWorkbook(file) {
+  setSharedStatus("Reading replacement archive workbook...");
+  rowsFromWorkbookFile(file, async function(err, imported) {
+    if (err) {
+      setSharedStatus("Replacement import failed: " + err.message);
+      flash("Replacement import failed");
+      return;
+    }
+
+    if (!imported.length) {
+      setSharedStatus("Replacement workbook had no usable picks.");
+      flash("No usable rows found");
+      return;
+    }
+
+    var confirmed = window.confirm("Replace the shared Supabase archive with " + imported.length + " row(s) from this Excel file? This clears the shared archive first.");
+    if (!confirmed) {
+      setSharedStatus("Replace shared archive canceled.");
+      return;
+    }
+
+    setSharedStatus("Clearing shared archive before replacement...");
+    try {
+      await clearSharedArchiveStore("replace_shared_archive_with_excel");
+      var deduped = dedupeMerge([], imported);
+      setTrackedPicks(deduped);
+      render(deduped);
+      setSharedStatus("Uploading " + deduped.length + " replacement rows to shared archive...");
+      var synced = await savePicksToSharedStore(deduped);
+      setSharedStatus("Shared archive replaced. Uploaded " + synced + " of " + deduped.length + " deduped rows.");
+      flash("Shared archive replaced");
+      if (hasPotentialCompletedPending(deduped)) setTimeout(function() { refreshGrades(true); }, 250);
+    } catch (clearErr) {
+      setSharedStatus("Replace failed: " + clearErr.message);
+      flash("Replace failed");
+    }
+  });
+}
+
+function importWorkbook(file) {
+  setSharedStatus("Reading archive workbook for merge...");
+  rowsFromWorkbookFile(file, async function(err, imported) {
+    if (err) {
+      setSharedStatus("Archive import failed: " + err.message);
+      flash("Archive import failed");
+      return;
+    }
+    var merged = dedupeMerge(getTrackedPicks(), imported);
+    setTrackedPicks(merged);
+    render(merged);
+    var synced = await savePicksToSharedStore(imported);
+    setSharedStatus("Import/merge complete. Imported " + imported.length + " rows and synced " + synced + " rows to shared archive.");
+    flash("Archive imported/merged");
+    if (hasPotentialCompletedPending(merged)) setTimeout(function() { refreshGrades(true); }, 250);
+  });
+}
+
+function getSortableFirstPitchTs(pick) {
+  var raw = pick && pick.rawCommenceTime ? new Date(pick.rawCommenceTime).getTime() : NaN;
+  if (isFinite(raw) && raw > 0) return raw;
+  var archived = pick && pick.archivedAt ? new Date(pick.archivedAt).getTime() : NaN;
+  if (isFinite(archived) && archived > 0) return archived;
+  return 0;
+}
+
+function render(picks) {
+  var allPicks = Array.isArray(picks) ? picks.map(normalizeAnyArchiveRow) : [];
+  var visiblePicks = applyTrackerDateFilter(allPicks);
+  updateDateFilterButtons();
+
+  var body = document.getElementById("trackerBody");
+  body.innerHTML = "";
+
+  var sortOrder = getSortOrder();
+  var sorted = visiblePicks.slice().sort(function(a, b) {
+    var at = getSortableFirstPitchTs(a), bt = getSortableFirstPitchTs(b);
+    if (at !== bt) return sortOrder === "asc" ? at - bt : bt - at;
+    var matchupCompare = String(a.matchup || "").localeCompare(String(b.matchup || ""));
+    if (matchupCompare !== 0) return matchupCompare;
+    return String(a.bestBetType || "").localeCompare(String(b.bestBetType || ""));
+  });
+
+  if (!sorted.length) {
+    body.innerHTML = '<tr><td colspan="13" class="muted">No tracked picks found for ' + escapeHtml(dateFilterLabel(getDateFilter())) + '.</td></tr>';
+    updateCards([], allPicks.length);
+    return;
+  }
+
+  sorted.forEach(function(p) {
+    var tr = document.createElement("tr");
+    var rowClass = rowClassForPick(p);
+    if (rowClass) tr.className = rowClass;
+    tr.innerHTML =
+      "<td>" + escapeHtml(formatBoardDateTime(p.rawCommenceTime, "—")) + "</td>" +
+      "<td>" + escapeHtml(p.matchup || "—") + "</td>" +
+      "<td>" + escapeHtml(p.bestBet || "—") + "</td>" +
+      "<td>" + escapeHtml(p.bestBetType || "—") + "</td>" +
+      "<td><span class='" + pillClass(p.confidence || "Low") + "'>" + escapeHtml(p.confidence || "Low") + "</span></td>" +
+      "<td>" + (hasValue(p.score) ? escapeHtml(Number(p.score).toFixed(1)) : "—") + "</td>" +
+      "<td>" + escapeHtml(p.resultStatus || "Pending") + "</td>" +
+      "<td><span class='" + gradeClass(p.grade || "") + "'>" + escapeHtml(p.grade || "—") + "</span></td>" +
+      "<td>" + escapeHtml(formatOdds(p.oddsPrice)) + "</td>" +
+      "<td>" + (p.netUnits != null ? escapeHtml(Number(p.netUnits).toFixed(2)) : "—") + "</td>" +
+      "<td>" + (p.profitDollars != null ? "$" + escapeHtml(Number(p.profitDollars).toFixed(2)) : "—") + "</td>" +
+      "<td>" + escapeHtml(p.resultDetail || "—") + "</td>" +
+      "<td>" + escapeHtml(p.source || "Archive") + "</td>";
+    body.appendChild(tr);
+  });
+  updateCards(sorted, allPicks.length);
+}
+
+function updateRevisionCard() {
+  var main = document.getElementById("cardDashboardJsRevision");
+  var sub = document.getElementById("cardDashboardJsRevisionSub");
+  if (main) main.textContent = DASHBOARD_JS_REVISION_DATE;
+  if (sub) sub.textContent = DASHBOARD_JS_REVISION_LABEL;
+}
+
+function updateCards(picks, totalCount) {
+  updateRevisionCard();
+  totalCount = Number.isFinite(Number(totalCount)) ? Number(totalCount) : picks.length;
+  document.getElementById("cardCount").textContent = picks.length;
+  var countSub = document.getElementById("cardCountSub");
+  if (countSub) {
+    countSub.textContent = getDateFilter() === "all"
+      ? "Showing all shared/local archive rows"
+      : "Showing " + dateFilterLabel(getDateFilter()) + " (" + picks.length + " of " + totalCount + ")";
+  }
+  var graded = picks.filter(function(p) { return p.grade === "Win" || p.grade === "Loss" || p.grade === "Push"; });
+  document.getElementById("cardGraded").textContent = graded.length;
+  var wins = graded.filter(function(p) { return p.grade === "Win"; }).length;
+  var losses = graded.filter(function(p) { return p.grade === "Loss"; }).length;
+  var pushes = graded.filter(function(p) { return p.grade === "Push"; }).length;
+  document.getElementById("cardRecord").textContent = graded.length ? (wins + "-" + losses + "-" + pushes) : "—";
+  var denom = wins + losses;
+  document.getElementById("cardWinRate").textContent = denom ? ((wins / denom) * 100).toFixed(1) + "%" : "—";
+  var netUnits = 0;
+  graded.forEach(function(p) { var n = Number(p.netUnits); if (isFinite(n)) netUnits += n; });
+  document.getElementById("cardNetUnits").textContent = graded.length ? netUnits.toFixed(2) : "—";
+  var netDollars = netUnits * getUnitSize();
+  document.getElementById("cardNetDollars").textContent = graded.length ? "$" + netDollars.toFixed(2) : "—";
+  var totalUnitsRisked = graded.filter(function(p) { return p.grade === "Win" || p.grade === "Loss"; }).length;
+  var roi = totalUnitsRisked ? (netUnits / totalUnitsRisked) * 100 : null;
+  document.getElementById("cardRoi").textContent = roi != null ? roi.toFixed(1) + "%" : "—";
+}
+
+function hasPotentialCompletedPending(picks) {
+  var now = Date.now();
+  return (Array.isArray(picks) ? picks : []).some(function(p) {
+    if (!p || (p.grade === "Win" || p.grade === "Loss" || p.grade === "Push")) return false;
+    if (!p.rawCommenceTime) return false;
+    var t = new Date(p.rawCommenceTime).getTime();
+    if (!isFinite(t)) return false;
+    return now - t > 5 * 60 * 60 * 1000;
+  });
+}
+
+async function pruneSharedArchiveDuplicates() {
+  try {
+    var res = await fetch("/api/archive-prune-duplicates", { method: "POST", cache: "no-store" });
+    var data = await res.json().catch(function() { return {}; });
+    if (res.ok && data && data.ok && Number(data.deletedCount || 0) > 0) {
+      flash("Removed " + Number(data.deletedCount || 0) + " duplicate shared archive rows.");
+    }
+    return data || {};
+  } catch (e) {
+    return {};
+  }
+}
+
+async function removeDuplicatesNow() {
+  setSharedStatus("Removing duplicates from shared archive and browser cache...");
+
+  try {
+    var localDeduped = dedupeMerge([], getTrackedPicks());
+    setTrackedPicks(localDeduped);
+    render(localDeduped);
+
+    var pruneData = await pruneSharedArchiveDuplicates();
+    var res = await fetch("/api/archive-list", { cache: "no-store" });
+    var data = await res.json().catch(function() { return {}; });
+
+    if (res.ok && data && data.ok && Array.isArray(data.rows)) {
+      var sharedRows = data.rows.map(normalizeAnyArchiveRow).filter(function(r) { return r.bestBet; });
+      var finalRows = dedupeMerge([], sharedRows);
+      setTrackedPicks(finalRows);
+      render(finalRows);
+      setSharedStatus(
+        "Duplicate cleanup complete. Shared rows: " + sharedRows.length +
+        ". Displaying: " + finalRows.length +
+        ". API removed duplicates: " + Number((pruneData && pruneData.deletedCount) || 0) + "."
+      );
+      flash("Duplicate cleanup complete");
+      return;
+    }
+
+    setSharedStatus("Duplicate cleanup ran locally. Shared archive reload failed.");
+    flash("Local duplicates removed");
+  } catch (err) {
+    var fallback = dedupeMerge([], getTrackedPicks());
+    setTrackedPicks(fallback);
+    render(fallback);
+    setSharedStatus("Duplicate cleanup failed against shared archive. Local duplicate cleanup applied.");
+    flash("Local duplicate cleanup applied");
+  }
+}
+
+async function loadSharedArchive() {
+  var localRows = getTrackedPicks();
+  setSharedStatus("Loading shared archive... " + SHARED_ARCHIVE_VERSION);
+  try {
+    await pruneSharedArchiveDuplicates();
+    var res = await fetch("/api/archive-list", { cache: "no-store" });
+    var data = await res.json();
+    if (data && data.ok && Array.isArray(data.rows)) {
+      var sharedRows = data.rows.map(normalizeAnyArchiveRow).filter(function(r) { return r.bestBet; });
+      var merged = dedupeMerge([], sharedRows);
+      setTrackedPicks(merged);
+      render(merged);
+      setSharedStatus("Loaded " + sharedRows.length + " shared rows. Displaying " + merged.length + " deduped shared rows.");
+      // Supabase is now the source of truth when available. Do not merge old browser-local rows back in.
+      if (hasPotentialCompletedPending(merged)) {
+        setSharedStatus("Loaded " + sharedRows.length + " shared rows. Auto-grading completed games...");
+        setTimeout(function() { refreshGrades(true); }, 250);
+      }
+      return;
+    }
+    render(localRows);
+    setSharedStatus("Shared archive returned no usable rows. Showing browser archive.");
+    if (hasPotentialCompletedPending(localRows)) setTimeout(function() { refreshGrades(true); }, 250);
+  } catch (err) {
+    render(localRows);
+    setSharedStatus("Shared archive unavailable. Showing browser archive.");
+    if (hasPotentialCompletedPending(localRows)) setTimeout(function() { refreshGrades(true); }, 250);
+  }
+}
+
+document.getElementById("importBtn").addEventListener("click", function() { document.getElementById("importInput").click(); });
+document.getElementById("importInput").addEventListener("change", function(e) { var file = e.target.files && e.target.files[0]; if (file) importWorkbook(file); e.target.value = ""; });
+document.getElementById("replaceSharedBtn").addEventListener("click", function() { document.getElementById("replaceInput").click(); });
+document.getElementById("replaceInput").addEventListener("change", function(e) { var file = e.target.files && e.target.files[0]; if (file) replaceSharedArchiveWithWorkbook(file); e.target.value = ""; });
+document.getElementById("refreshBtn").addEventListener("click", function() { refreshGrades(false); });
+document.getElementById("dedupeBtn").addEventListener("click", removeDuplicatesNow);
+document.getElementById("exportBtn").addEventListener("click", function() {
+  var picks = getTrackedPicks();
+  if (!picks.length) return;
+  var ws = XLSX.utils.json_to_sheet(picks);
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Tracker");
+  XLSX.writeFile(wb, "bobbys_mlb_pick_tracker.xlsx");
+});
+document.getElementById("clearSharedBtn").addEventListener("click", clearSharedArchiveNow);
+document.getElementById("backBtn").addEventListener("click", function() { window.location.href = "index.html"; });
+document.getElementById("trendsBtn").addEventListener("click", function() { window.location.href = "data-trends.html"; });
+document.getElementById("unitSize").addEventListener("input", function() {
+  var n = Number(this.value || 10);
+  if (isFinite(n) && n > 0) { setUnitSize(n); render(getTrackedPicks()); }
+});
+document.querySelectorAll(".date-filter-btn").forEach(function(btn) {
+  btn.addEventListener("click", function() {
+    setDateFilter(this.getAttribute("data-date-filter"));
+    render(getTrackedPicks());
+  });
+});
+
+document.getElementById("sortOrder").addEventListener("change", function(e) { setSortOrder(e.target.value); render(getTrackedPicks()); });
+
+var confirmClearModal = document.getElementById("confirmClearModal");
+function openClearConfirm() { confirmClearModal.classList.add("show"); confirmClearModal.setAttribute("aria-hidden", "false"); }
+function closeClearConfirm() { confirmClearModal.classList.remove("show"); confirmClearModal.setAttribute("aria-hidden", "true"); }
+document.getElementById("clearBtn").addEventListener("click", openClearConfirm);
+document.getElementById("confirmClearNo").addEventListener("click", closeClearConfirm);
+document.getElementById("confirmClearYes").addEventListener("click", function() { setTrackedPicks([]); render([]); flash("Local tracker cleared. Shared archive remains available."); closeClearConfirm(); });
+confirmClearModal.addEventListener("click", function(e) { if (e.target === confirmClearModal) closeClearConfirm(); });
+
+document.getElementById("unitSize").value = getUnitSize();
+document.getElementById("sortOrder").value = getSortOrder();
+render(getTrackedPicks());
+loadSharedArchive();
+</script>
+</body>
+</html>
